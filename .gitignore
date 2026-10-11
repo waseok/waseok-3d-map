@@ -1,0 +1,4 @@
+*.pdf
+data/groups.json
+data/labels.txt
+__pycache__/
