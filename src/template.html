@@ -136,7 +136,7 @@ ol.stages .fl{flex:none;background:var(--fc);color:#fff;font-weight:800;font-siz
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 <script>
 const DATA=__DATA__;
-const CAT={
+const CAT={'#f6cfdc':'현관·로비',
   '#9ae4c7':'교실','#d8bee3':'특별실','#41c7f1':'화장실','#ffb589':'계단','#ffef99':'행정·지원실',
   '#b9ff1a':'창고·설비·휴게','#a0b4e6':'승강기','#ffffff':'병설유치원','#faf2da':'필로티','#d8d8d8':'복도'};
 const NICE={'화(남)':'남자 화장실','화(여)':'여자 화장실','교화(남)':'교직원 화장실(남)','교화(여)':'교직원 화장실(여)','장.화':'장애인 화장실','승':'승강기','EPS':'EPS실(전기 설비)'};
@@ -221,7 +221,7 @@ const floors=[...Array(5)].map(()=>new THREE.Group());
 floors.forEach(f=>scene.add(f));
 const pickables=[]; const rooms=[];
 const edgeMat=new THREE.LineBasicMaterial({color:0x2b3a36,transparent:true,opacity:.4});
-const STAIR='#ffb589', HALL='#d8d8d8';
+const STAIR='#ffb589', HALL='#d8d8d8', LOBBY='#f6cfdc', LOBBY_H=6;
 const stairs=[];
 // union outline of a room's cells, so one room shows no inner seams
 function outline(cells){
@@ -270,7 +270,7 @@ function buildStair(g,room){
 DATA.forEach((g,i)=>{
   const cat=CAT[g.c]||'기타';
   const solid=!(g.c===HALL||g.c==='#faf2da'||(g.c==='#ffffff'&&!g.l));
-  const h=solid?ROOM:SLAB;
+  const h=g.c===LOBBY?LOBBY_H:solid?ROOM:SLAB;
   const mat=new THREE.MeshLambertMaterial({color:g.c===HALL?'#e3e5e2':g.c,transparent:true,opacity:1});
   const room={g,cat,mat,meshes:[],floor:g.f,solid,label:nice(g.l)};
   rooms.push(room);
@@ -282,6 +282,9 @@ DATA.forEach((g,i)=>{
     if(solid||g.l) pickables.push(m);
   });
   if(solid) floors[g.f].add(outlineLines(g.b,h+0.02));
+  // 현관·로비 are low walk-through spaces, so their name sits on their own low floor
+  if(g.c===LOBBY){const x0=Math.min(...g.b.map(b=>b[0])),z0=Math.min(...g.b.map(b=>b[1])),x1=Math.max(...g.b.map(b=>b[0]+b[2])),z1=Math.max(...g.b.map(b=>b[1]+b[3]));
+    floors[g.f].add(textPlane(g.l,(x0+x1)/2-CX,(z0+z1)/2-CZ,h+0.1,x1-x0,z1-z0,'#7a1f3d',Math.min(8,(x1-x0)/(g.l.length*1.1))));}
 });
 // ===== exterior view, modeled on the drone photos =====
 const EH=20, TW=12;
@@ -413,7 +416,6 @@ EXF=0;
   const s=new THREE.Mesh(new THREE.PlaneGeometry(10,2.5),new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(c)}));s.position.set(cx-CX,14.2,z+8.05-CZ);X(s);
   // same door on the plan view
   const bar=new THREE.Mesh(new THREE.BoxGeometry(14,3,1.6),new THREE.MeshBasicMaterial({color:0xe8335f}));bar.position.set(cx-CX,1.5,z-CZ);floors[0].add(bar);
-  floors[0].add(textPlane('현관',cx-CX,z+5-CZ,0,24,8,'#e8335f',6));
 })();
 // floor label textures (one canvas per floor, laid on room tops)
 const BX0=100,BZ0=-80,BW=620,BD=260,PX=5;
@@ -421,7 +423,7 @@ document.fonts.ready.then(()=>{
   floors.forEach((grp,f)=>{
     const c=document.createElement('canvas');c.width=BW*PX;c.height=BD*PX;const ctx=c.getContext('2d');
     ctx.textAlign='center';ctx.textBaseline='middle';
-    rooms.filter(r=>r.floor===f&&r.g.l&&r.g.c!==HALL&&r.g.c!==STAIR).forEach(r=>{
+    rooms.filter(r=>r.floor===f&&r.g.l&&r.g.c!==HALL&&r.g.c!==STAIR&&r.g.c!==LOBBY).forEach(r=>{
       // label sits on the largest cell of the room
       let best=r.g.b.reduce((a,b)=>a[2]*a[3]>=b[2]*b[3]?a:b);
       if(r.g.b.length>3){const xs=r.g.b.map(b=>b[0]),zs=r.g.b.map(b=>b[1]),xe=r.g.b.map(b=>b[0]+b[2]),ze=r.g.b.map(b=>b[1]+b[3]);
@@ -517,7 +519,7 @@ document.getElementById('zout').onclick=()=>zoom(1.45);
 document.getElementById('zreset').onclick=()=>setMode(mode);
 
 // ===== walking graph: corridors, stairs, lifts and the rooms that open onto them =====
-const WALK=new Set([HALL,PILOTI,STAIR,'#a0b4e6']);
+const WALK=new Set([HALL,PILOTI,STAIR,'#a0b4e6',LOBBY]);
 const nodes=[],adj=[];
 const newNode=o=>{o.id=nodes.length;nodes.push(o);adj.push([]);return o;};
 const addE=(a,b,w,e={})=>{adj[a.id].push({to:b.id,w,...e});adj[b.id].push({to:a.id,w,...e});};
@@ -525,6 +527,10 @@ const walkCells=[],roomNodes=[];
 DATA.forEach((g,gi)=>{const room=rooms[gi];
   if(WALK.has(g.c)||(g.c==='#ffffff'&&!g.l))g.b.forEach(b=>walkCells.push(newNode({f:g.f,x:b[0]+b[2]/2,z:b[1]+b[3]/2,b,g,room,
     kind:g.c===STAIR?'stair':g.c==='#a0b4e6'?'lift':'walk'})));
+  if(g.c===LOBBY&&g.l){const own=walkCells.filter(n=>n.g===g);const big=own.reduce((a,c)=>a.b[2]*a.b[3]>=c.b[2]*c.b[3]?a:c);
+    room.node=newNode({f:g.f,x:big.x,z:big.z,g,room,kind:'room'});roomNodes.push(room.node);room.lobby=true;
+    own.forEach(n=>addE(room.node,n,Math.hypot(room.node.x-n.x,room.node.z-n.z)));}
+  else if(WALK.has(g.c)){}
   else if(g.l){const big=g.b.reduce((a,c)=>a[2]*a[3]>=c[2]*c[3]?a:c);
     room.node=newNode({f:g.f,x:big[0]+big[2]/2,z:big[1]+big[3]/2,g,room,kind:'room'});roomNodes.push(room.node);}
 });
@@ -564,6 +570,7 @@ const EXITS=[
 ].map(([name,x,z])=>{const n=cellAt(0,x,z);if(n)n.exit=name;return n;}).filter(Boolean);
 EXITS.forEach((a,i)=>EXITS.slice(i+1).forEach(b=>addE(a,b,dist(a,b)*1.3,{out:true})));
 const ENTRANCE=EXITS[0];
+const MAINDOOR=(rooms.find(r=>r.lobby&&r.g.l==='중앙현관')||{}).node||ENTRANCE;
 
 function dijkstra(src,{noLift}={}){
   const d=new Float64Array(nodes.length).fill(Infinity),prev=new Int32Array(nodes.length).fill(-1),pe=[],done=new Uint8Array(nodes.length);
@@ -736,12 +743,13 @@ function directions(steps,evac){
 const navFrom=document.getElementById('navFrom'),navTo=document.getElementById('navTo'),navOut=document.getElementById('navOut');
 function norm(s){return s.replace(/\s/g,'').replace(/(\d)학년(\d+)반?/,'$1-$2').toLowerCase();}
 function findPlaces(text){const v=norm(text);if(!v)return[];
-  if(['현관','정문','운동장','입구'].some(k=>v.includes(k)))return[ENTRANCE];
+  const ex=walkCells.filter(n=>n.exit&&norm(n.exit).startsWith(v));if(ex.length&&/^현관./.test(v))return ex;
+  if(['현관','정문','운동장','입구'].some(k=>v.includes(k)))return[MAINDOOR];
   if(v==='화장실'||v==='화장')return roomNodes.filter(n=>n.room.cat==='화장실'&&!/교화|장\.화/.test(n.g.l));
   const exact=roomNodes.filter(n=>norm(n.g.l)===v||norm(n.room.label)===v);if(exact.length)return exact;
   return roomNodes.filter(n=>norm(n.g.l).includes(v)||norm(n.room.label).includes(v));}
 const dl=document.getElementById('places');
-[...new Set(['현관(운동장)','화장실',...rooms.filter(r=>r.node).map(r=>r.label)])].forEach(l=>dl.insertAdjacentHTML('beforeend',`<option value="${l}">`));
+[...new Set(['중앙현관','로비','화장실',...EXITS.map(n=>n.exit),...rooms.filter(r=>r.node).map(r=>r.label)])].forEach(l=>dl.insertAdjacentHTML('beforeend',`<option value="${l}">`));
 function runNav(){
   const A=findPlaces(navFrom.value),B=findPlaces(navTo.value);
   if(!A.length||!B.length){navOut.hidden=false;navOut.innerHTML=`<p class="hint">${!A.length?'출발':'도착'} 장소를 찾지 못했어요. 목록에서 골라 주세요.</p>`;return;}
@@ -786,8 +794,8 @@ renderer.domElement.addEventListener('pointerup',e=>{if(!down||Math.hypot(e.clie
 function select(r,fly_){if(selected)selected.mat.emissive.setHex(0);selected=r;
   if(!r){card.hidden=true;return;}
   card.hidden=false;
-  card.innerHTML=`<small>${r.floor+1}층 · ${r.cat}</small><b>${r.label}</b>${r.g.s?`<small style="color:#d62020;font-weight:700">${r.g.s} 교실 겸용</small>`:''}
-    ${r.node?`<div class="cardbtns"><button data-a="from">여기서 출발</button><button data-a="to">여기로 가기</button>${r.cat==='화장실'||r.cat==='계단'?'':'<button data-a="evac" class="evac">비상대피로</button>'}</div>`:''}`;
+  card.innerHTML=`<small>${r.floor+1}층 · ${r.cat}</small><b>${r.label}</b>${r.g.s?`<small style="color:#d62020;font-weight:700">${r.g.s} 교실 겸용</small>`:''}${r.g.n?`<small style="display:block">${r.g.n}</small>`:''}
+    ${r.node?`<div class="cardbtns"><button data-a="from">여기서 출발</button><button data-a="to">여기로 가기</button>${r.cat==='화장실'||r.cat==='계단'||r.lobby?'':'<button data-a="evac" class="evac">비상대피로</button>'}</div>`:''}`;
   card.querySelectorAll('button').forEach(b=>b.onclick=()=>{
     if(b.dataset.a==='evac'){evacuate(r);return;}
     openNav();(b.dataset.a==='from'?navFrom:navTo).value=r.label;
