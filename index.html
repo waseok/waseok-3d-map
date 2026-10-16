@@ -86,11 +86,46 @@ ol.stages .fl{flex:none;background:var(--fc);color:#fff;font-weight:800;font-siz
 .panel{max-height:calc(100% - 32px);overflow:auto}
 
 .help{position:fixed;right:76px;bottom:calc(16px + env(safe-area-inset-bottom,0px));font-size:.72rem;color:var(--muted);text-align:right}
+.more{display:flex;flex-direction:column;gap:12px}
+.legend .grades{grid-column:1/-1;display:grid;grid-template-columns:repeat(3,1fr);gap:4px 10px;padding-bottom:4px;margin-bottom:2px;border-bottom:1px solid var(--line)}
+.navtop{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+.touchhelp{display:none}
+/* phones: the menu becomes a bottom sheet; room card and zoom buttons move to the top */
 @media (max-width:640px){
-  .panel{padding:12px;gap:10px}
-  .toggle{display:inline}
-  .panel.collapsed .more{display:none}
+  .panel{left:0;right:0;top:auto;bottom:var(--kb,0px);width:auto;max-height:min(62vh,calc(100% - 150px));
+    border-radius:18px 18px 0 0;border-bottom:0;padding:8px 16px calc(12px + env(safe-area-inset-bottom,0px));gap:10px;
+    box-shadow:0 -8px 30px rgba(0,0,0,.14)}
+  .panel::before{content:'';flex:none;align-self:center;width:40px;height:4px;border-radius:2px;background:var(--line)}
+  h1{font-size:1.15rem}
+  .sub{display:none}
+  .toggle{display:inline-block}
+  .touchhelp{display:block}
+  .panel.collapsed .opt{display:none}
+  /* while a route is shown the sheet only holds the route guide */
+  .panel.routing #searchBox,.panel.routing .opt:not(#navBox),.panel.routing #navBox>summary,
+  .panel.routing .navgrid,.panel.routing .navbtns,.panel.routing .navhint{display:none}
+  .panel.routing.collapsed #navBox{display:block}
+  .panel.routing #navOut{margin-top:0}
+  .panel.routing[data-view="step"] ol.stages li:not(.on),.panel.routing[data-view="follow"] ol.stages li:not(.on){display:none}
+  .panel.routing.collapsed .viewsel,.panel.routing.collapsed ol.stages{display:none}
+  .card{top:calc(12px + env(safe-area-inset-top,0px));bottom:auto;left:12px;right:68px;min-width:0;max-width:none}
+  .zoom{top:calc(12px + env(safe-area-inset-top,0px));bottom:auto;right:12px}
+  .menubtn{top:auto;bottom:calc(16px + env(safe-area-inset-bottom,0px))}
   .help{display:none}
+}
+/* touch screens: bigger targets, and 16px inputs so iOS does not zoom the page on focus */
+@media (pointer:coarse){
+  .floors button{padding:11px 0}
+  .search input,.navgrid input{font-size:16px;padding:10px 12px}
+  .btn{padding:11px 12px}
+  .cardbtns button{padding:10px 12px;font-size:.85rem}
+  .hidebtn{width:40px;height:40px}
+  .toggle{padding:9px 12px;border:1px solid var(--line);border-radius:10px;background:var(--chip)}
+  .check{min-height:40px}
+  .check input{width:22px;height:22px;margin:0}
+  details.nav summary{padding:10px 0}
+  ol.stages li{padding:10px}
+  .zoom button{width:44px;height:44px}
 }
 </style>
 
@@ -100,23 +135,23 @@ ol.stages .fl{flex:none;background:var(--fc);color:#fff;font-weight:800;font-siz
     <div style="min-width:0;flex:1"><h1>와석초 교실배치도</h1><div class="sub">2026학년도 · 본관·별관·신관 1–5층</div></div>
     <div style="display:flex;gap:10px;align-items:center"><button class="toggle" id="tg" aria-expanded="true">접기</button><button class="hidebtn" id="hideMenu" aria-label="메뉴 숨기기" title="메뉴 숨기기">&#10005;</button></div>
   </div>
-  <div class="floors mode" id="mode">
-    <button data-m="ext" aria-pressed="true">외관</button>
-    <button data-m="plan" aria-pressed="false">교실 배치도</button>
-  </div>
-  <div id="planUI">
-    <div class="lbl">층 보기</div>
-    <div class="floors" id="floors" style="margin-top:6px"></div>
-  </div>
-  <label class="check" id="ovRow" for="overlay"><input type="checkbox" id="overlay"> 외관 겹쳐 보기</label>
-  <label class="row" for="op" id="opRow"><span class="lbl">외관 투명도</span><input id="op" type="range" min="0" max="90" step="5" value="0"><span id="opVal" style="width:2.6em;text-align:right;font-variant-numeric:tabular-nums">0%</span></label>
-  <div>
+  <div id="searchBox">
     <div class="search">
-      <input id="q" type="search" placeholder="교실 찾기 (예: 5-3, 보건실)" autocomplete="off">
+      <input id="q" type="search" enterkeyhint="search" placeholder="교실 찾기 (예: 5-3, 보건실)" autocomplete="off">
     </div>
     <div class="hint" id="hint" style="margin-top:4px"></div>
   </div>
-  <details class="nav" id="navBox">
+  <div class="floors mode opt" id="mode">
+    <button data-m="ext" aria-pressed="true">외관</button>
+    <button data-m="plan" aria-pressed="false">교실 배치도</button>
+  </div>
+  <div id="planUI" class="opt">
+    <div class="lbl">층 보기</div>
+    <div class="floors" id="floors" style="margin-top:6px"></div>
+  </div>
+  <label class="check opt" id="ovRow" for="overlay"><input type="checkbox" id="overlay"> 외관 겹쳐 보기</label>
+  <label class="row opt" for="op" id="opRow"><span class="lbl">외관 투명도</span><input id="op" type="range" min="0" max="90" step="5" value="0"><span id="opVal" style="width:2.6em;text-align:right;font-variant-numeric:tabular-nums">0%</span></label>
+  <details class="nav opt" id="navBox">
     <summary>길찾기 · 비상대피로</summary>
     <div class="navgrid">
       <input id="navFrom" list="places" placeholder="출발 (예: 5-3, 현관)" autocomplete="off">
@@ -125,13 +160,14 @@ ol.stages .fl{flex:none;background:var(--fc);color:#fff;font-weight:800;font-siz
       <span></span>
     </div>
     <div class="navbtns"><button class="btn primary" id="navGo">경로 보기</button><button class="btn" id="navClear">지우기</button></div>
-    <div class="hint" style="margin-top:6px">교실을 누르면 <b>비상대피로</b> 버튼이 나와요.</div>
+    <div class="hint navhint" style="margin-top:6px">교실을 누르면 <b>비상대피로</b> 버튼이 나와요.</div>
     <div id="navOut" hidden></div>
   </details>
   <datalist id="places"></datalist>
-  <div class="more" style="display:flex;flex-direction:column;gap:12px">
+  <div class="more opt">
     <label class="row" for="gap" id="gapRow"><span class="lbl">층 간격</span><input id="gap" type="range" min="1" max="3" step="0.05" value="1.5"></label>
     <div class="legend" id="legend"></div>
+    <div class="hint touchhelp">한 손가락: 돌리기 · 두 손가락: 확대·이동 · 교실을 누르면 정보가 나와요</div>
   </div>
 </div>
 <button class="menubtn" id="showMenu" hidden aria-label="메뉴 열기">&#9776; 메뉴</button>
@@ -149,6 +185,12 @@ const CAT={'#f6cfdc':'현관·로비',
   '#b9ff1a':'창고·설비·휴게','#a0b4e6':'승강기','#ffffff':'병설유치원','#faf2da':'필로티','#d8d8d8':'복도'};
 const NICE={'화(남)':'남자 화장실','화(여)':'여자 화장실','교화(남)':'교직원 화장실(남)','교화(여)':'교직원 화장실(여)','장.화':'장애인 화장실','승':'승강기','EPS':'EPS실(전기 설비)'};
 const nice=l=>NICE[l]||l.replace(/^계단(\d)$/,'계단 $1').replace(/^(\d)-(\d+)$/,'$1학년 $2반');
+// classrooms take one colour per grade; other classrooms (돌봄·늘봄·학습탐구반) and the busier categories
+// are toned down so the grade colours stand apart
+const CLASS='#9ae4c7', GRADE_C=['#ffd84a','#9bdc6e','#4fc9ad','#86a9ff','#c79bf0','#ff9a8f'];
+const SHOW={[CLASS]:'#cdeee0','#d8bee3':'#ddd2e8','#ffef99':'#efe6c6','#b9ff1a':'#d7e2b5','#a0b4e6':'#b6c1d8'};
+const gradeOf=g=>{const m=g.c===CLASS&&g.l.match(/^([1-6])-\d+$/);return m?+m[1]:0;};
+const colorOf=g=>{const gr=gradeOf(g);return gr?GRADE_C[gr-1]:SHOW[g.c]||g.c;};
 
 const H=34, ROOM=17, SLAB=1.2, CX=408, CZ=50;
 let gapK=1.5;
@@ -279,8 +321,9 @@ DATA.forEach((g,i)=>{
   const cat=CAT[g.c]||'기타';
   const solid=!(g.c===HALL||g.c==='#faf2da'||(g.c==='#ffffff'&&!g.l));
   const h=g.c===LOBBY?LOBBY_H:solid?ROOM:SLAB;
-  const mat=new THREE.MeshLambertMaterial({color:g.c===HALL?'#e3e5e2':g.c,transparent:true,opacity:1});
-  const room={g,cat,mat,meshes:[],floor:g.f,solid,label:nice(g.l)};
+  const color=g.c===HALL?'#e3e5e2':colorOf(g);
+  const mat=new THREE.MeshLambertMaterial({color,transparent:true,opacity:1});
+  const room={g,cat,mat,color,grade:gradeOf(g),meshes:[],floor:g.f,solid,label:nice(g.l)};
   rooms.push(room);
   if(g.c===STAIR){buildStair(g,room);return;}
   g.b.forEach(([x,z,w,d])=>{
@@ -514,7 +557,8 @@ document.getElementById('gap').oninput=e=>{gapK=+e.target.value;layout();};
 function flyCam(target,pos){fly={a:controls.target.clone(),b:target,pa:camera.position.clone(),pb:pos,t:0};}
 
 const legend=document.getElementById('legend');
-Object.entries(CAT).filter(([c])=>c!=='#d8d8d8').forEach(([c,n])=>{legend.insertAdjacentHTML('beforeend',`<span><i style="background:${c}"></i>${n}</span>`);});
+legend.insertAdjacentHTML('beforeend',`<div class="grades">${GRADE_C.map((c,i)=>`<span><i style="background:${c}"></i>${i+1}학년</span>`).join('')}</div>`);
+Object.entries(CAT).filter(([c])=>c!=='#d8d8d8').forEach(([c,n])=>{legend.insertAdjacentHTML('beforeend',`<span><i style="background:${SHOW[c]||c}"></i>${c===CLASS?'돌봄·늘봄·탐구반':n}</span>`);});
 
 // camera
 let fly=null;
@@ -698,7 +742,7 @@ function frame(stageIdx){
   (route.P||[]).forEach((p,i)=>{if(stageIdx<0||route.pts[i].s===stageIdx||(i+1<route.pts.length&&route.pts[i+1].s===stageIdx))box.expandByPoint(p);});
   if(box.isEmpty())return;const c=box.getCenter(new THREE.Vector3()),sz=box.getSize(new THREE.Vector3()).length();
   flyCam(c,c.clone().add(new THREE.Vector3(-0.25,0.85,0.75).normalize().multiplyScalar(Math.max(stageIdx<0?380:300,sz*(stageIdx<0?1.6:1.5)))));}
-function setView(v){route.view=v;follow.playing=false;
+function setView(v){route.view=v;follow.playing=false;panel.dataset.view=v;
   if(v==='step'&&route.cur<0)route.cur=0;if(v==='all')route.cur=-1;
   if(v==='follow'){follow.s=0;follow.dir=null;follow.snap=true;follow.playing=true;route.cur=0;}
   navOut.querySelectorAll('[data-v]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.v===v)));
@@ -708,14 +752,14 @@ function goStage(d){route.cur=Math.max(0,Math.min(route.stages.length-1,route.cu
 function syncFollowUI(){const b=document.getElementById('playBtn');if(b)b.textContent=follow.playing?'❚❚ 멈춤':(follow.s>=(route&&route.len||1)?'↺ 다시':'▶ 걷기');}
 function showRoute(steps,color,evac,title){
   const {pts,stages}=buildStages(steps);
-  route={steps,color,evac,pts,stages,view:'all',cur:-1};openNav();
+  route={steps,color,evac,pts,stages,view:'all',cur:-1};select(null);panel.classList.add('routing');openNav();
   if(mode==='ext'&&extOp>=0.95){overlay=true;ovIn.checked=true;setMode('plan',true);}
   active=-1;markFloor();
   const {m}=directions(steps,evac);
   const items=stages.map((st,i)=>{const x=stageText(st,i,route);const col=st.kind==='out'?'#5b6770':FLOORCOL[st.f];
     return `<li style="--fc:${col}" data-i="${i}"><span class="fl">${x.t}</span><span>${x.d}</span></li>`;}).join('');
   navOut.hidden=false;
-  navOut.innerHTML=`<div class="navhead" style="--c:${color}">${title}<span>약 ${m}m · ${Math.max(1,Math.round(m/60))}분 · ${stages.length}단계</span></div>
+  navOut.innerHTML=`<div class="navtop"><div class="navhead" style="--c:${color}">${title}<span>약 ${m}m · ${Math.max(1,Math.round(m/60))}분 · ${stages.length}단계</span></div><button class="btn" id="routeClose">닫기</button></div>
     <div class="floors viewsel"><button data-v="all">전체 경로</button><button data-v="step">단계별</button><button data-v="follow">따라가기</button></div>
     <div class="stepctl" id="stepCtl" hidden><button class="btn" id="prevSt">◀ 이전</button><span id="stageCount"></span><button class="btn primary" id="nextSt">다음 ▶</button></div>
     <div class="stepctl" id="followCtl" hidden><button class="btn primary" id="playBtn">▶ 걷기</button><button class="btn" id="restartBtn">처음부터</button></div>
@@ -726,9 +770,12 @@ function showRoute(steps,color,evac,title){
   document.getElementById('prevSt').onclick=()=>goStage(-1);document.getElementById('nextSt').onclick=()=>goStage(1);
   document.getElementById('playBtn').onclick=()=>{if(follow.s>=route.len)follow.s=0;follow.playing=!follow.playing;follow.snap=follow.playing;syncFollowUI();};
   document.getElementById('restartBtn').onclick=()=>{follow.s=0;follow.snap=true;follow.playing=true;syncFollowUI();};
+  document.getElementById('routeClose').onclick=clearRoute;
   setView(stages.length>1?'step':'all');
 }
-function clearRoute(){route=null;routeG.clear();dots.length=0;navOut.hidden=true;layout();}
+function clearRoute(){route=null;routeG.clear();dots.length=0;navOut.hidden=true;panel.classList.remove('routing');
+  if(phone.matches){document.getElementById('navBox').open=false;setCollapsed(true);}
+  layout();}
 
 // ===== directions text =====
 const where=n=>n.kind==='room'?n.room.label:n.exit?n.exit:n.g.l?nice(key(n.g.l)):'복도';
@@ -749,13 +796,27 @@ function directions(steps,evac){
 
 // ===== route finding UI =====
 const navFrom=document.getElementById('navFrom'),navTo=document.getElementById('navTo'),navOut=document.getElementById('navOut');
-function norm(s){return s.replace(/\s/g,'').replace(/(\d)학년(\d+)반?/,'$1-$2').toLowerCase();}
+// class numbers in the ways parents type them: 5-3, 5-3반, 5학년 3반, 5.3, 53, 510 → 5-3 / 5-10
+function norm(s){s=s.replace(/\s/g,'').toLowerCase();
+  const m=s.match(/^([1-6])(?:학년|[-.·_/])?(\d{1,2})반?$/);
+  return m?`${m[1]}-${+m[2]}`:s.replace(/(\d)학년(\d+)반?/,'$1-$2');}
+// everyday names for rooms the 배치도 names differently
+const ALIAS={도서관:'도서미디어실',도서실:'도서미디어실',강당:'체육관',엘리베이터:'승강기',엘베:'승강기',
+  위클래스:'wee클래스',특수학급:'학습탐구반',특수반:'학습탐구반',도움반:'학습탐구반',전산실:'컴퓨터실',
+  주차장:'필로티(주차장)',돌봄교실:'돌봄',늘봄교실:'늘봄',정문:'중앙현관',입구:'중앙현관',운동장:'중앙현관',
+  유치원:'병설유치원',급식소:'급식실',밥먹는곳:'급식실'};
+const named=rooms.filter(r=>r.g.l&&r.g.c!==HALL);
+// one matcher for both the search box and the route inputs: exact name, then part of a name,
+// then category (병설유치원) or a room's note (분실물 → 로비)
+function searchRooms(text){let v=norm(text);if(!v)return[];if(ALIAS[v])v=norm(ALIAS[v]);
+  const ex=named.filter(r=>norm(r.g.l)===v||norm(r.label)===v);if(ex.length)return ex;
+  const part=named.filter(r=>norm(r.g.l).includes(v)||norm(r.label).includes(v));if(part.length)return part;
+  return named.filter(r=>norm(r.cat).includes(v)||(r.g.n&&norm(r.g.n).includes(v)));}
+const placeNode=r=>r.node||walkCells.find(n=>n.room===r);
 function findPlaces(text){const v=norm(text);if(!v)return[];
   const ex=walkCells.filter(n=>n.exit&&norm(n.exit).startsWith(v));if(ex.length&&/^현관./.test(v))return ex;
-  if(['현관','정문','운동장','입구'].some(k=>v.includes(k)))return[MAINDOOR];
   if(v==='화장실'||v==='화장')return roomNodes.filter(n=>n.room.cat==='화장실'&&!/교화|장\.화/.test(n.g.l));
-  const exact=roomNodes.filter(n=>norm(n.g.l)===v||norm(n.room.label)===v);if(exact.length)return exact;
-  return roomNodes.filter(n=>norm(n.g.l).includes(v)||norm(n.room.label).includes(v));}
+  return [...new Set(searchRooms(text).map(placeNode).filter(Boolean))];}
 const dl=document.getElementById('places');
 [...new Set(['중앙현관','로비','화장실',...EXITS.map(n=>n.exit),...rooms.filter(r=>r.node).map(r=>r.label)])].forEach(l=>dl.insertAdjacentHTML('beforeend',`<option value="${l}">`));
 function runNav(){
@@ -802,11 +863,14 @@ renderer.domElement.addEventListener('pointerup',e=>{if(!down||Math.hypot(e.clie
 function select(r,fly_){if(selected)selected.mat.emissive.setHex(0);selected=r;
   if(!r){card.hidden=true;return;}
   card.hidden=false;
-  card.innerHTML=`<small>${r.floor+1}층 · ${r.cat}</small><b>${r.label}</b>${r.g.s?`<small style="color:#d62020;font-weight:700">${r.g.s} 교실 겸용</small>`:''}${r.g.n?`<small style="display:block">${r.g.n}</small>`:''}
+  card.style.borderLeft=`6px solid ${r.color}`;
+  card.innerHTML=`<small>${r.floor+1}층 · ${r.grade?r.grade+'학년 교실':r.cat}</small><b>${r.label}</b>${r.g.s?`<small style="color:#d62020;font-weight:700">${r.g.s} 교실 겸용</small>`:''}${r.g.n?`<small style="display:block">${r.g.n}</small>`:''}
     ${r.node?`<div class="cardbtns"><button data-a="from">여기서 출발</button><button data-a="to">여기로 가기</button>${r.cat==='화장실'||r.cat==='계단'||r.lobby?'':'<button data-a="evac" class="evac">비상대피로</button>'}</div>`:''}`;
   card.querySelectorAll('button').forEach(b=>b.onclick=()=>{
     if(b.dataset.a==='evac'){evacuate(r);return;}
     openNav();(b.dataset.a==='from'?navFrom:navTo).value=r.label;
+    // visitors come in through the main entrance, so that is the start unless one was chosen
+    if(b.dataset.a==='to'&&!navFrom.value&&MAINDOOR.room)navFrom.value=MAINDOOR.room.label;
     if(navFrom.value&&navTo.value)runNav();else(b.dataset.a==='from'?navTo:navFrom).focus();});
   if(fly_){const m=r.meshes[0];const p=new THREE.Vector3();m.getWorldPosition(p);flyTo(p,300);}}
 function openNav(){if(panel.hidden)setMenu(true);document.getElementById('navBox').open=true;if(panel.classList.contains('collapsed'))tg.click();}
@@ -814,28 +878,52 @@ function openNav(){if(panel.hidden)setMenu(true);document.getElementById('navBox
 // search
 const q=document.getElementById('q'),hint=document.getElementById('hint');
 q.addEventListener('input',()=>{const v=norm(q.value);if(!v){hint.textContent='';return;}
-  const res=rooms.filter(r=>r.g.l&&(norm(r.g.l).includes(v)||norm(r.label).includes(v)));
-  const exact=res.find(r=>norm(r.g.l)===v)||res[0];
-  if(!exact){hint.textContent='찾는 교실이 없어요. 반 번호(5-3)나 실 이름으로 검색해 보세요.';return;}
-  hint.textContent=res.length>1?`${res.length}곳 중 ${exact.floor+1}F ${exact.label} 표시`:`${exact.floor+1}F ${exact.label}`;
+  // a whole grade: say which floors its classes are on
+  const gm=v.match(/^([1-6])학년$/);
+  if(gm){const cl=rooms.filter(r=>r.grade===+gm[1]).sort((a,b)=>+a.g.l.split('-')[1]-b.g.l.split('-')[1]),byF={};
+    cl.forEach(r=>(byF[r.floor+1]=byF[r.floor+1]||[]).push(r.g.l));
+    hint.textContent=`${gm[1]}학년 ${cl.length}개 반 · `+Object.entries(byF).map(([f,a])=>`${f}F ${a.length>1?a[0]+'~'+a[a.length-1]:a[0]}`).join(' · ');
+    if(mode!=='plan')setMode('plan',true);select(null);setFloor(-1);return;}
+  const res=searchRooms(q.value);
+  if(!res.length){hint.textContent='찾는 곳이 없어요. 반 번호(5-3)나 실 이름(보건실)으로 검색해 보세요.';return;}
+  const hit=res.find(r=>r.floor===active)||res[0];
+  hint.textContent=res.length>1?`${res.length}곳 중 ${hit.floor+1}F ${hit.label} 표시`:`${hit.floor+1}F ${hit.label}`;
   if(mode!=='plan')setMode('plan',true);
-  active=exact.floor;markFloor();layout();select(exact,true);});
+  active=hit.floor;markFloor();layout();select(hit,true);});
+q.addEventListener('keydown',e=>{if(e.key==='Enter')q.blur();});
 
 // mobile collapse
 const tg=document.getElementById('tg'),panel=document.getElementById('panel');
-tg.onclick=()=>{const c=panel.classList.toggle('collapsed');tg.textContent=c?'펼치기':'접기';tg.setAttribute('aria-expanded',String(!c));};
-if(innerWidth<=640){panel.classList.add('collapsed');tg.textContent='펼치기';}
+const phone=matchMedia('(max-width:640px)');
+function setCollapsed(c){panel.classList.toggle('collapsed',c);tg.textContent=c?'펼치기':'접기';tg.setAttribute('aria-expanded',String(!c));}
+tg.onclick=()=>setCollapsed(!panel.classList.contains('collapsed'));
+if(phone.matches)setCollapsed(true);
 const showMenu=document.getElementById('showMenu');
 function setMenu(open){panel.hidden=!open;showMenu.hidden=open;(open?document.getElementById('hideMenu'):showMenu).focus({preventScroll:true});}
 document.getElementById('hideMenu').onclick=()=>setMenu(false);showMenu.onclick=()=>setMenu(true);
+// iOS keeps the layout viewport under the on-screen keyboard: lift the bottom sheet above it
+if(window.visualViewport){const vv=visualViewport,kb=()=>{document.documentElement.style.setProperty('--kb',
+  Math.max(0,document.documentElement.clientHeight-vv.height-vv.offsetTop)+'px');watchCover();};
+  vv.addEventListener('resize',kb);vv.addEventListener('scroll',kb);}
 
-function resize(){const w=innerWidth,h=innerHeight;renderer.setSize(w,h);camera.aspect=w/h;camera.updateProjectionMatrix();}
+// on phones the sheet covers the bottom and the room card the top: shift the picture so the camera
+// target sits in the middle of the part of the screen that is still visible
+const view={cur:0,to:0};
+function coverShift(){if(!phone.matches)return 0;
+  const top=card.hidden?0:card.getBoundingClientRect().bottom,bot=panel.hidden?0:innerHeight-panel.getBoundingClientRect().top;
+  return Math.round((Math.max(0,bot)-top)/2);}
+function applyView(){const w=innerWidth,h=innerHeight;if(Math.abs(view.cur)<0.5)camera.clearViewOffset();else camera.setViewOffset(w,h,0,view.cur,w,h);}
+const watchCover=()=>{view.to=coverShift();};
+new ResizeObserver(watchCover).observe(panel);new ResizeObserver(watchCover).observe(card);
+
+function resize(){const w=innerWidth,h=innerHeight;renderer.setSize(w,h);camera.aspect=w/h;camera.updateProjectionMatrix();watchCover();view.cur=view.to;applyView();}
 addEventListener('resize',resize);resize();
 camera.position.set(30,230,420);controls.target.set(-50,45,-10);setMode('ext',true);
 const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
 renderer.setAnimationLoop(t=>{
   if(fly){fly.t=reduce?1:Math.min(1,fly.t+0.06);const k=1-Math.pow(1-fly.t,3);controls.target.lerpVectors(fly.a,fly.b,k);camera.position.lerpVectors(fly.pa,fly.pb,k);if(fly.t>=1)fly=null;}
   if(selected){const s=(Math.sin(t/250)+1)/2;selected.mat.emissive.setRGB(0.35*s,0.25*s,0);}
+  if(view.cur!==view.to){view.cur=reduce||Math.abs(view.to-view.cur)<1?view.to:view.cur+(view.to-view.cur)*0.2;applyView();}
   animateDots(t);stepFollow(t);
   controls.update();renderer.render(scene,camera);});
 </script>
