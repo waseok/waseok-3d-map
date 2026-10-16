@@ -38,6 +38,15 @@ python tools/build.py
 
 PDF의 칸 구성이 바뀌면 `tools/extract_rooms.py`의 층 구분 좌표(`bands`, `anc`)와 `tools/merge_rooms.py`의 이름 보정 규칙을 맞춰야 할 수 있습니다.
 
+### 검색어(별칭) 추가하기
+
+배치도와 다르게 부르는 이름은 `src/template.html`의 `const ALIAS={...}`에 `부르는말:'배치도 이름'`으로 넣습니다. 예: `강당:'체육관'`.
+반 번호는 `5-3`, `5-3반`, `5학년 3반`, `53`처럼 입력해도 찾습니다.
+
+### 학년별 교실 색 바꾸기
+
+`src/template.html`의 `GRADE_C` 목록이 1학년부터 6학년까지의 교실 색입니다.
+
 ### 비상대피로 넣기
 
 `src/template.html`에서 `const EVAC={};`를 찾아 반별 경로를 적습니다. 지나갈 계단과 나갈 출구 이름을 순서대로 넣으면 됩니다.
