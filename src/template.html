@@ -82,6 +82,16 @@ ol.stages .fl{flex:none;background:var(--fc);color:#fff;font-weight:800;font-siz
 .legend .grades{grid-column:1/-1;display:grid;grid-template-columns:repeat(3,1fr);gap:4px 10px;padding-bottom:4px;margin-bottom:2px;border-bottom:1px solid var(--line)}
 .navtop{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
 .touchhelp{display:none}
+.event{border:2px solid #f2b705;background:rgba(255,201,60,.16);border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:8px}
+.evhead{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:.9rem}
+.evhead .btn{flex:none;font-size:.74rem;padding:6px 9px}
+.evlist{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.evlist button{text-align:left;font:600 .74rem var(--body);padding:7px 9px;border-radius:9px;border:1px solid var(--line);background:var(--chip);color:var(--muted);cursor:pointer;display:flex;flex-direction:column;gap:1px}
+.evlist button b{font-size:.9rem;color:var(--fg)}
+.evlist button.star{border-color:#f2b705;background:rgba(255,201,60,.28)}
+.event .evon{width:100%;border-color:#f2b705}
+.evnote{display:block;color:#b45309;font-weight:700;margin-top:2px}
+.legend .evleg{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;padding-bottom:4px;margin-bottom:2px;border-bottom:1px solid var(--line)}
 /* phones: the menu becomes a bottom sheet; room card and zoom buttons move to the top */
 @media (max-width:640px){
   .panel{left:0;right:0;top:auto;bottom:var(--kb,0px);width:auto;max-height:min(62vh,calc(100% - 150px));
@@ -94,7 +104,7 @@ ol.stages .fl{flex:none;background:var(--fc);color:#fff;font-weight:800;font-siz
   .touchhelp{display:block}
   .panel.collapsed .opt{display:none}
   /* while a route is shown the sheet only holds the route guide */
-  .panel.routing #searchBox,.panel.routing .opt:not(#navBox),.panel.routing #navBox>summary,
+  .panel.routing #searchBox,.panel.routing #eventBox,.panel.routing .opt:not(#navBox),.panel.routing #navBox>summary,
   .panel.routing .navgrid,.panel.routing .navbtns,.panel.routing .navhint{display:none}
   .panel.routing.collapsed #navBox{display:block}
   .panel.routing #navOut{margin-top:0}
@@ -133,9 +143,14 @@ ol.stages .fl{flex:none;background:var(--fc);color:#fff;font-weight:800;font-siz
     </div>
     <div class="hint" id="hint" style="margin-top:4px"></div>
   </div>
+  <div class="event" id="eventBox" hidden></div>
   <div class="floors mode opt" id="mode">
     <button data-m="ext" aria-pressed="true">외관</button>
     <button data-m="plan" aria-pressed="false">교실 배치도</button>
+  </div>
+  <div class="opt" id="bldUI">
+    <div class="lbl">건물 보기</div>
+    <div class="floors" id="blds" style="margin-top:6px"></div>
   </div>
   <div id="planUI" class="opt">
     <div class="lbl">층 보기</div>
@@ -183,6 +198,21 @@ const CLASS='#9ae4c7', GRADE_C=['#ffd84a','#9bdc6e','#4fc9ad','#86a9ff','#c79bf0
 const SHOW={[CLASS]:'#cdeee0','#d8bee3':'#ddd2e8','#ffef99':'#efe6c6','#b9ff1a':'#d7e2b5','#a0b4e6':'#b6c1d8'};
 const gradeOf=g=>{const m=g.c===CLASS&&g.l.match(/^([1-6])-\d+$/);return m?+m[1]:0;};
 const colorOf=g=>{const gr=gradeOf(g);return gr?GRADE_C[gr-1]:SHOW[g.c]||g.c;};
+// temporary event view: the rooms in use are highlighted, every other room turns grey and a star marks the
+// main venue. It switches itself off once `end` has passed; empty `places` to turn it off sooner.
+const EVENT={title:'수업나눔 한마당',day:'10월 20일',end:'2026-10-21T00:00:00+09:00',places:[
+  {room:'3-1',name:'3학년 1반',note:'공개수업 · 수업나눔 장소',label:'공개수업·나눔',star:true},
+  {room:'4-2',name:'4학년 2반',note:'공개수업',label:'공개수업'},
+  {room:'5-2',name:'5학년 2반',note:'공개수업',label:'공개수업'},
+  {room:'컴퓨터실2',name:'6학년 5반',note:'공개수업',label:'6-5 공개수업',moved:'6-5'}]};
+const EV_C='#ffc93c', EV_GRAY='#dcdfde', EV_KEEP=new Set(['화장실','계단','현관·로비','승강기']);
+let evShow=true;
+const evLive=()=>EVENT.places.length>0&&Date.now()<Date.parse(EVENT.end);
+const evOn=()=>evLive()&&evShow;
+// buildings, using the same split as the exterior model (zoneOf)
+const BLD={main:'본관',new:'신관',annex:'별관'}, shownBld=new Set(Object.keys(BLD));
+const bldOf=(f,g,b)=>{const z=zoneOf(f,g,b);return z==='annex'?'annex':z==='new'||z==='gym'?'new':'main';};
+const bldShown=o=>!o.userData.bld||shownBld.has(o.userData.bld);
 
 const H=34, ROOM=17, SLAB=1.2, CX=408, CZ=50;
 let gapK=1.5;
@@ -307,7 +337,7 @@ function buildStair(g,room){
     }
     put(L-land/2,S/2,land,S,0,half);
   }
-  floors[g.f].add(sg); stairs.push(sg);
+  sg.userData.bld=room.bld; floors[g.f].add(sg); stairs.push(sg);
 }
 DATA.forEach((g,i)=>{
   const cat=CAT[g.c]||'기타';
@@ -315,24 +345,29 @@ DATA.forEach((g,i)=>{
   const h=g.c===LOBBY?LOBBY_H:solid?ROOM:SLAB;
   const color=g.c===HALL?'#e3e5e2':colorOf(g);
   const mat=new THREE.MeshLambertMaterial({color,transparent:true,opacity:1});
-  const room={g,cat,mat,color,grade:gradeOf(g),meshes:[],floor:g.f,solid,label:nice(g.l)};
+  const big=g.b.reduce((a,c)=>a[2]*a[3]>=c[2]*c[3]?a:c);
+  const room={g,cat,mat,color,grade:gradeOf(g),bld:bldOf(g.f,g,big),meshes:[],floor:g.f,solid,label:nice(g.l)};
   rooms.push(room);
   if(g.c===STAIR){buildStair(g,room);return;}
   g.b.forEach(([x,z,w,d])=>{
     const geo=new THREE.BoxGeometry(w,h,d);
-    const m=new THREE.Mesh(geo,mat); m.position.set(x+w/2-CX,h/2,z+d/2-CZ); m.userData.room=room;
+    const m=new THREE.Mesh(geo,mat); m.position.set(x+w/2-CX,h/2,z+d/2-CZ); m.userData.room=room; m.userData.bld=bldOf(g.f,g,[x,z]);
     floors[g.f].add(m); room.meshes.push(m);
     if(solid||g.l) pickables.push(m);
   });
-  if(solid) floors[g.f].add(outlineLines(g.b,h+0.02));
+  if(solid){const ol=outlineLines(g.b,h+0.02);ol.userData.bld=room.bld;floors[g.f].add(ol);}
   // 현관·로비 are low walk-through spaces, so their name sits on their own low floor
   if(g.c===LOBBY){const x0=Math.min(...g.b.map(b=>b[0])),z0=Math.min(...g.b.map(b=>b[1])),x1=Math.max(...g.b.map(b=>b[0]+b[2])),z1=Math.max(...g.b.map(b=>b[1]+b[3]));
-    floors[g.f].add(textPlane(g.l,(x0+x1)/2-CX,(z0+z1)/2-CZ,h+0.1,x1-x0,z1-z0,'#7a1f3d',Math.min(8,(x1-x0)/(g.l.length*1.1))));}
+    const tp=textPlane(g.l,(x0+x1)/2-CX,(z0+z1)/2-CZ,h+0.1,x1-x0,z1-z0,'#7a1f3d',Math.min(8,(x1-x0)/(g.l.length*1.1)));
+    tp.userData.bld=room.bld;floors[g.f].add(tp);}
 });
 // ===== exterior view, modeled on the drone photos =====
 const EH=20, TW=12;
 const ext=new THREE.Group(); scene.add(ext);
-const extF=[0,1,2,3,4].map(()=>{const g=new THREE.Group();ext.add(g);return g;});let EXF=0;const X=o=>extF[EXF].add(o);
+const extF=[0,1,2,3,4].map(()=>{const g=new THREE.Group();ext.add(g);return g;});let EXF=0,XB=null;
+// XB: building the next pieces belong to (for the 본관/신관/별관 filter); null = always shown
+const X=o=>{if(XB)o.userData.bld=XB;extF[EXF].add(o);};
+const tagBld=t=>t==='annex'?'annex':t==='new'||t==='gym'?'new':'main';
 function facadeTex(o){
   const c=document.createElement('canvas');c.width=256;c.height=256;const g=c.getContext('2d');
   g.fillStyle=o.bg;g.fillRect(0,0,256,256);
@@ -385,19 +420,20 @@ for(let f=0;f<5;f++){
   for(const tag in buf){const B=buf[tag],geo=new THREE.BufferGeometry();
     geo.setAttribute('position',new THREE.Float32BufferAttribute(B.p,3));geo.setAttribute('normal',new THREE.Float32BufferAttribute(B.n,3));
     geo.setAttribute('uv',new THREE.Float32BufferAttribute(B.uv,2));
-    const m=new THREE.Mesh(geo,facadeMat[tag]);m.castShadow=true;m.receiveShadow=true;X(m);}
+    const m=new THREE.Mesh(geo,facadeMat[tag]);m.castShadow=true;m.receiveShadow=true;XB=tagBld(tag);X(m);}
   // roof slab on top of every cell (hidden where the next floor sits on it)
   cells.forEach(({b:[x,z,w,d],tag})=>{const r=new THREE.Mesh(new THREE.BoxGeometry(w,1,d),tag==='gym'?metalMat:roofMat);
-    r.position.set(x+w/2-CX,y1+0.5,z+d/2-CZ);r.receiveShadow=true;r.castShadow=true;X(r);});
+    r.position.set(x+w/2-CX,y1+0.5,z+d/2-CZ);r.receiveShadow=true;r.castShadow=true;XB=tagBld(tag);X(r);});
 }
 // gym: low pitched metal roof
-EXF=3;
+EXF=3;XB='new';
 (function(){const cs=DATA.filter(g=>g.f===3&&g.b.some(b=>b[1]>=110)&&g.c==='#d8bee3').flatMap(g=>g.b);
   const x0=Math.min(...cs.map(b=>b[0])),x1=Math.max(...cs.map(b=>b[0]+b[2])),z0=Math.min(...cs.map(b=>b[1])),z1=Math.max(...cs.map(b=>b[1]+b[3]));
   [-1,1].forEach(s=>{const half=(z1-z0)/2,m=new THREE.Mesh(new THREE.BoxGeometry(x1-x0+2,0.8,half/Math.cos(0.12)+1),metalMat);
     m.rotation.x=s*0.12;m.position.set((x0+x1)/2-CX,4*EH+1.4+Math.tan(0.12)*half/2,(z0+z1)/2+s*half/2-CZ);m.castShadow=true;X(m);});})();
 EXF=4;
 // 와석 tower: one storey above the 5F roof, with the school name sign facing the playground
+XB='main';
 (function(){const t=DATA.find(g=>g.f===4&&g.l==='계단2').b[0],[x,z,w,d]=t;
   const m=new THREE.Mesh(new THREE.BoxGeometry(w,EH*0.9,d),new THREE.MeshLambertMaterial({color:0xd8d7d1}));
   m.position.set(x+w/2-CX,5*EH+EH*0.45,z+d/2-CZ);m.castShadow=true;X(m);
@@ -419,6 +455,7 @@ EXF=0;
 (function(){const col=new THREE.MeshLambertMaterial({color:0xf4f2ec}),pave=new THREE.MeshLambertMaterial({color:0xd9d2c3});const seen=[];
   DATA.filter(g=>g.f===0&&g.c===PILOTI).forEach(g=>g.b.forEach(([x,z,w,d])=>{
     const p=new THREE.Mesh(new THREE.BoxGeometry(w,0.3,d),pave);p.position.set(x+w/2-CX,0.15,z+d/2-CZ);p.receiveShadow=true;X(p);
+    XB=bldOf(0,g,[x,z]);
     [[x,z],[x+w,z],[x,z+d],[x+w,z+d]].forEach(([a,b])=>{if(seen.some(([s,t])=>Math.hypot(s-a,t-b)<8))return;seen.push([a,b]);
       const c=new THREE.Mesh(new THREE.CylinderGeometry(1.2,1.2,EH,10),col);c.position.set(a-CX,EH/2,b-CZ);c.castShadow=true;X(c);});}));})();
 // solar panels on the main roof and the annex roof
@@ -426,7 +463,8 @@ EXF=0;
   const arr=(x0,x1,z0,z1,y)=>{for(let x=x0;x+9<=x1;x+=10)for(let z=z0;z+5<=z1;z+=7){const p=new THREE.Mesh(new THREE.BoxGeometry(9,0.4,5),pm);
     p.rotation.x=-0.3;p.position.set(x+4.5-CX,y+2.2,z+2.5-CZ);p.castShadow=true;X(p);
     const s=new THREE.Mesh(new THREE.BoxGeometry(9,1.6,0.3),fm);s.position.set(x+4.5-CX,y+1.2,z+0.6-CZ);X(s);}};
-  EXF=4;arr(330,468,-28,-12,5*EH);arr(330,468,2,20,5*EH);EXF=2;arr(630,690,-30,40,3*EH);})();
+  EXF=4;XB='main';arr(330,468,-28,-12,5*EH);arr(330,468,2,20,5*EH);EXF=2;XB='annex';arr(630,690,-30,40,3*EH);})();
+XB=null;
 EXF=0;
 // rainbow canopies over the stands between the building and the playground
 (function(){
@@ -446,7 +484,7 @@ EXF=0;
 })();
 
 // 현관②: glass double door from the playground into the 1F corridor, between 계단2 and 급식실2
-EXF=0;
+EXF=0;XB='main';
 (function(){const x0=272.9,x1=322.2,z=23.2,cx=(x0+x1)/2;
   const frame=new THREE.MeshLambertMaterial({color:0x4a4f52}),glass=new THREE.MeshLambertMaterial({color:0x7fb8c4,emissive:0x15323a});
   const B=(w,h,d,x,y,zz,m)=>{const b=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m);b.position.set(x-CX,y,zz-CZ);b.castShadow=true;X(b);return b;};
@@ -458,15 +496,18 @@ EXF=0;
   g.fillStyle='#fff';g.font='800 40px "Gothic A1",sans-serif';g.textAlign='center';g.textBaseline='middle';g.fillText('현  관',128,34);
   const s=new THREE.Mesh(new THREE.PlaneGeometry(10,2.5),new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(c)}));s.position.set(cx-CX,14.2,z+8.05-CZ);X(s);
   // same door on the plan view
-  const bar=new THREE.Mesh(new THREE.BoxGeometry(14,3,1.6),new THREE.MeshBasicMaterial({color:0xe8335f}));bar.position.set(cx-CX,1.5,z-CZ);floors[0].add(bar);
+  const bar=new THREE.Mesh(new THREE.BoxGeometry(14,3,1.6),new THREE.MeshBasicMaterial({color:0xe8335f}));bar.position.set(cx-CX,1.5,z-CZ);bar.userData.bld='main';floors[0].add(bar);
 })();
+XB=null;
 // floor label textures (one canvas per floor, laid on room tops)
 const BX0=100,BZ0=-80,BW=620,BD=260,PX=5;
-document.fonts.ready.then(()=>{
-  floors.forEach((grp,f)=>{
-    const c=document.createElement('canvas');c.width=BW*PX;c.height=BD*PX;const ctx=c.getContext('2d');
-    ctx.textAlign='center';ctx.textBaseline='middle';
-    rooms.filter(r=>r.floor===f&&r.g.l&&r.g.c!==HALL&&r.g.c!==STAIR&&r.g.c!==LOBBY).forEach(r=>{
+// redrawn when the event view or the building filter changes
+const labelCv=[];
+function drawLabels(){
+  const ev=evOn();
+  labelCv.forEach(({ctx,tex},f)=>{
+    ctx.clearRect(0,0,BW*PX,BD*PX);
+    rooms.filter(r=>r.floor===f&&r.g.l&&r.g.c!==HALL&&r.g.c!==STAIR&&r.g.c!==LOBBY&&shownBld.has(r.bld)).forEach(r=>{
       // label sits on the largest cell of the room
       let best=r.g.b.reduce((a,b)=>a[2]*a[3]>=b[2]*b[3]?a:b);
       if(r.g.b.length>3){const xs=r.g.b.map(b=>b[0]),zs=r.g.b.map(b=>b[1]),xe=r.g.b.map(b=>b[0]+b[2]),ze=r.g.b.map(b=>b[1]+b[3]);
@@ -474,13 +515,23 @@ document.fonts.ready.then(()=>{
       const [x,z,w,d]=best, cx=(x+w/2-BX0)*PX, cz=(z+d/2-BZ0)*PX, t=r.g.l;
       let fs=Math.min(d*0.42,13)*PX; ctx.font=`800 ${fs}px "Gothic A1",sans-serif`;
       const tw=ctx.measureText(t).width; if(tw>w*0.9*PX){fs*=w*0.9*PX/tw;ctx.font=`800 ${fs}px "Gothic A1",sans-serif`;}
-      ctx.fillStyle='#16302a'; ctx.fillText(t,cx,cz-(r.g.s?fs*0.3:0));
-      if(r.g.s){ctx.font=`800 ${fs*0.6}px "Gothic A1",sans-serif`;ctx.fillStyle='#d62020';ctx.fillText(r.g.s,cx,cz+fs*0.5);}
+      const sub=(ev&&r.evSub)||r.g.s;
+      ctx.fillStyle=ev&&!r.ev?'#6f7c78':'#16302a'; ctx.fillText(t,cx,cz-(sub?fs*0.3:0));
+      if(sub){ctx.font=`800 ${fs*0.6}px "Gothic A1",sans-serif`;ctx.fillStyle=ev&&r.evSub?'#a3410a':'#d62020';ctx.fillText(sub,cx,cz+fs*0.5);}
     });
+    tex.needsUpdate=true;
+  });
+}
+document.fonts.ready.then(()=>{
+  floors.forEach((grp,f)=>{
+    const c=document.createElement('canvas');c.width=BW*PX;c.height=BD*PX;const ctx=c.getContext('2d');
+    ctx.textAlign='center';ctx.textBaseline='middle';
     const tex=new THREE.CanvasTexture(c); tex.anisotropy=renderer.capabilities.getMaxAnisotropy();
     const m=new THREE.Mesh(new THREE.PlaneGeometry(BW,BD),new THREE.MeshBasicMaterial({map:tex,transparent:true,depthWrite:false}));
     m.rotation.x=-Math.PI/2; m.position.set(BX0+BW/2-CX,ROOM+0.15,BZ0+BD/2-CZ); m.renderOrder=2; grp.add(m); grp.userData.labels=m;
+    labelCv[f]={ctx,tex};
   });
+  drawLabels();
 });
 // floor tags floating at west end
 floors.forEach((grp,f)=>{const t=textPlane(`${f+1}F`,60-CX,0,ROOM,40,24,'#0f7a5c',20);grp.add(t);});
@@ -549,6 +600,7 @@ document.getElementById('gap').oninput=e=>{gapK=+e.target.value;layout();};
 function flyCam(target,pos){fly={a:controls.target.clone(),b:target,pa:camera.position.clone(),pb:pos,t:0};}
 
 const legend=document.getElementById('legend');
+legend.insertAdjacentHTML('beforeend',`<div class="evleg" hidden><span><i style="background:${EV_C}"></i>${EVENT.title} 장소</span><span><i style="background:${EV_GRAY}"></i>그 밖의 교실</span></div>`);
 legend.insertAdjacentHTML('beforeend',`<div class="grades">${GRADE_C.map((c,i)=>`<span><i style="background:${c}"></i>${i+1}학년</span>`).join('')}</div>`);
 Object.entries(CAT).filter(([c])=>c!=='#d8d8d8').forEach(([c,n])=>{legend.insertAdjacentHTML('beforeend',`<span><i style="background:${SHOW[c]||c}"></i>${c===CLASS?'돌봄·늘봄·탐구반':n}</span>`);});
 
@@ -801,6 +853,7 @@ const named=rooms.filter(r=>r.g.l&&r.g.c!==HALL);
 // one matcher for both the search box and the route inputs: exact name, then part of a name,
 // then category (병설유치원) or a room's note (분실물 → 로비)
 function searchRooms(text){let v=norm(text);if(!v)return[];if(ALIAS[v])v=norm(ALIAS[v]);
+  if(evOn()&&/수업나눔|공개수업|한마당/.test(v))return evRooms;
   const ex=named.filter(r=>norm(r.g.l)===v||norm(r.label)===v);if(ex.length)return ex;
   const part=named.filter(r=>norm(r.g.l).includes(v)||norm(r.label).includes(v));if(part.length)return part;
   return named.filter(r=>norm(r.cat).includes(v)||(r.g.n&&norm(r.g.n).includes(v)));}
@@ -855,8 +908,9 @@ renderer.domElement.addEventListener('pointerup',e=>{if(!down||Math.hypot(e.clie
 function select(r,fly_){if(selected)selected.mat.emissive.setHex(0);selected=r;
   if(!r){card.hidden=true;return;}
   card.hidden=false;
-  card.style.borderLeft=`6px solid ${r.color}`;
-  card.innerHTML=`<small>${r.floor+1}층 · ${r.grade?r.grade+'학년 교실':r.cat}</small><b>${r.label}</b>${r.g.s?`<small style="color:#d62020;font-weight:700">${r.g.s} 교실 겸용</small>`:''}${r.g.n?`<small style="display:block">${r.g.n}</small>`:''}
+  if(!shownBld.has(r.bld)){shownBld.add(r.bld);applyBld();}
+  card.style.borderLeft=`6px solid #${r.mat.color.getHexString()}`;
+  card.innerHTML=`<small>${r.floor+1}층 · ${r.grade?r.grade+'학년 교실':r.cat}</small><b>${r.label}</b>${r.g.s?`<small style="color:#d62020;font-weight:700">${r.g.s} 교실 겸용</small>`:''}${r.g.n?`<small style="display:block">${r.g.n}</small>`:''}${evOn()&&r.evNote?`<small class="evnote">★ ${EVENT.day} ${EVENT.title} · ${r.evNote}</small>`:''}
     ${r.node?`<div class="cardbtns"><button data-a="from">여기서 출발</button><button data-a="to">여기로 가기</button>${r.cat==='화장실'||r.cat==='계단'||r.lobby?'':'<button data-a="evac" class="evac">비상대피로</button>'}</div>`:''}`;
   card.querySelectorAll('button').forEach(b=>b.onclick=()=>{
     if(b.dataset.a==='evac'){evacuate(r);return;}
@@ -878,7 +932,7 @@ q.addEventListener('input',()=>{const v=norm(q.value);if(!v){hint.textContent=''
     if(mode!=='plan')setMode('plan',true);select(null);setFloor(-1);return;}
   const res=searchRooms(q.value);
   if(!res.length){hint.textContent='찾는 곳이 없어요. 반 번호(5-3)나 실 이름(보건실)으로 검색해 보세요.';return;}
-  const hit=res.find(r=>r.floor===active)||res[0];
+  const hit=res===evRooms?res[0]:res.find(r=>r.floor===active)||res[0];
   hint.textContent=res.length>1?`${res.length}곳 중 ${hit.floor+1}F ${hit.label} 표시`:`${hit.floor+1}F ${hit.label}`;
   if(mode!=='plan')setMode('plan',true);
   active=hit.floor;markFloor();layout();select(hit,true);});
@@ -893,6 +947,61 @@ if(phone.matches)setCollapsed(true);
 const showMenu=document.getElementById('showMenu');
 function setMenu(open){panel.hidden=!open;showMenu.hidden=open;(open?document.getElementById('hideMenu'):showMenu).focus({preventScroll:true});}
 document.getElementById('hideMenu').onclick=()=>setMenu(false);showMenu.onclick=()=>setMenu(true);
+function showRoom(r){if(mode!=='plan')setMode('plan',true);active=r.floor;markFloor();layout();select(r,true);}
+
+// ===== building filter: 전체 or any mix of 본관·신관·별관 =====
+const bb=document.getElementById('blds');
+[['all','전체'],...Object.entries(BLD)].forEach(([k,n])=>{const b=document.createElement('button');b.textContent=n;b.dataset.b=k;
+  b.onclick=()=>pickBld(k);bb.appendChild(b);});
+const allBld=()=>shownBld.size===Object.keys(BLD).length;
+function applyBld(){
+  [...floors,...extF].forEach(g=>g.children.forEach(o=>{if(o.userData.bld)o.visible=shownBld.has(o.userData.bld);}));
+  [...bb.children].forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.b==='all'?allBld():!allBld()&&shownBld.has(b.dataset.b))));
+  syncStar();drawLabels();}
+// from 전체, a building button shows only that building; after that the buttons add or remove buildings
+function pickBld(k){const keys=Object.keys(BLD);
+  if(k==='all'||(!allBld()&&shownBld.size===1&&shownBld.has(k)))keys.forEach(x=>shownBld.add(x));
+  else if(allBld()){shownBld.clear();shownBld.add(k);}
+  else if(shownBld.has(k))shownBld.delete(k);else shownBld.add(k);
+  if(selected&&!shownBld.has(selected.bld))select(null);
+  applyBld();
+  const cells=DATA.filter(g=>g.c!==HALL).flatMap(g=>g.b.filter(b=>shownBld.has(bldOf(g.f,g,b))));
+  const x0=Math.min(...cells.map(b=>b[0])),x1=Math.max(...cells.map(b=>b[0]+b[2])),z0=Math.min(...cells.map(b=>b[1])),z1=Math.max(...cells.map(b=>b[1]+b[3]));
+  flyTo(new THREE.Vector3((x0+x1)/2-CX,controls.target.y,(z0+z1)/2-CZ));}
+
+// ===== event view (EVENT at the top of the script) =====
+const evRooms=[];
+EVENT.places.forEach(p=>{const r=rooms.find(q=>q.g.l===p.room&&q.node);if(!r)return;
+  r.ev=p;r.evSub=p.label;r.evNote=p.moved?`${nice(p.moved)} ${p.note}`:p.note;evRooms.push(r);
+  // the class that moves out: its own room says where the lesson is
+  if(p.moved){const m=rooms.find(q=>q.g.l===p.moved);if(m){m.evSub=`→ ${p.room}`;m.evNote=`수업은 ${r.floor+1}층 ${r.label}에서 해요`;}}});
+evRooms.sort((a,b)=>(b.ev.star?1:0)-(a.ev.star?1:0));
+// spinning star with a sign over the main venue
+const evStar=new THREE.Group();
+(function(){const r=evRooms.find(q=>q.ev.star);if(!r)return;
+  const sh=new THREE.Shape();
+  for(let i=0;i<10;i++){const a=Math.PI/2+i*Math.PI/5,R=i%2?2.8:6.5;i?sh.lineTo(Math.cos(a)*R,Math.sin(a)*R):sh.moveTo(Math.cos(a)*R,Math.sin(a)*R);}
+  const geo=new THREE.ExtrudeGeometry(sh,{depth:1.6,bevelEnabled:true,bevelThickness:.5,bevelSize:.5,bevelSegments:1});geo.center();
+  const star=new THREE.Mesh(geo,new THREE.MeshLambertMaterial({color:0xffc400,emissive:0x7a4a00,depthTest:false,transparent:true}));star.renderOrder=14;
+  const sign=makeSprite('★ 수업나눔','#d97706');sign.position.y=12;
+  const [x,z,w,d]=r.g.b.reduce((a,c)=>a[2]*a[3]>=c[2]*c[3]?a:c);
+  evStar.add(star,sign);evStar.scale.setScalar(1.6);evStar.position.set(x+w/2-CX,ROOM+14,z+d/2-CZ);evStar.userData={spin:star,room:r};floors[r.floor].add(evStar);})();
+function syncStar(){const r=evStar.userData.room;evStar.visible=!!r&&evOn()&&shownBld.has(r.bld);}
+const evBox=document.getElementById('eventBox');
+function renderEventBox(){
+  if(!evLive()){evBox.hidden=true;return;}evBox.hidden=false;
+  if(!evShow){evBox.innerHTML=`<button class="btn evon" id="evOn">★ ${EVENT.day} ${EVENT.title} 장소 보기</button>`;
+    evBox.querySelector('#evOn').onclick=()=>{evShow=true;applyEvent();setMode('plan');};return;}
+  evBox.innerHTML=`<div class="evhead"><b>★ ${EVENT.day} ${EVENT.title}</b><button class="btn" id="evOff">평소 배치도</button></div>
+    <div class="evlist">${evRooms.map((r,i)=>`<button data-i="${i}"${r.ev.star?' class="star"':''}><b>${r.ev.star?'★ ':''}${r.ev.name}</b><span>${BLD[r.bld]} ${r.floor+1}층${r.ev.moved?' '+r.label:''}</span></button>`).join('')}</div>
+    <div class="hint">누르면 위치와 길 안내가 나와요${evRooms.some(r=>r.ev.star)?` · ★ 수업나눔: ${evRooms.find(r=>r.ev.star).ev.name}`:''}</div>`;
+  evBox.querySelector('#evOff').onclick=()=>{evShow=false;applyEvent();};
+  evBox.querySelectorAll('[data-i]').forEach(b=>b.onclick=()=>showRoom(evRooms[+b.dataset.i]));}
+// event on: rooms in use are highlighted, other rooms grey; toilets, stairs, lifts and the entrance keep their colour
+function applyEvent(){const on=evOn();
+  rooms.forEach(r=>r.mat.color.set(!on?r.color:r.ev?EV_C:r.solid&&!EV_KEEP.has(r.cat)?EV_GRAY:r.color));
+  legend.querySelector('.evleg').hidden=!on;legend.querySelector('.grades').hidden=on;
+  syncStar();drawLabels();renderEventBox();if(selected)select(selected);}
 // iOS keeps the layout viewport under the on-screen keyboard: lift the bottom sheet above it
 if(window.visualViewport){const vv=visualViewport,kb=()=>{document.documentElement.style.setProperty('--kb',
   Math.max(0,document.documentElement.clientHeight-vv.height-vv.offsetTop)+'px');watchCover();};
@@ -911,10 +1020,12 @@ new ResizeObserver(watchCover).observe(panel);new ResizeObserver(watchCover).obs
 function resize(){const w=innerWidth,h=innerHeight;renderer.setSize(w,h);camera.aspect=w/h;camera.updateProjectionMatrix();watchCover();view.cur=view.to;applyView();}
 addEventListener('resize',resize);resize();
 camera.position.set(30,230,420);controls.target.set(-50,45,-10);setMode('ext',true);
+applyBld();applyEvent();if(evOn())setMode('plan');
 const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
 renderer.setAnimationLoop(t=>{
   if(fly){fly.t=reduce?1:Math.min(1,fly.t+0.06);const k=1-Math.pow(1-fly.t,3);controls.target.lerpVectors(fly.a,fly.b,k);camera.position.lerpVectors(fly.pa,fly.pb,k);if(fly.t>=1)fly=null;}
   if(selected){const s=(Math.sin(t/250)+1)/2;selected.mat.emissive.setRGB(0.35*s,0.25*s,0);}
+  if(evStar.visible&&!reduce){evStar.userData.spin.rotation.y=t/700;evStar.position.y=ROOM+14+Math.sin(t/450)*1.5;}
   if(view.cur!==view.to){view.cur=reduce||Math.abs(view.to-view.cur)<1?view.to:view.cur+(view.to-view.cur)*0.2;applyView();}
   animateDots(t);stepFollow(t);
   controls.update();renderer.render(scene,camera);});
