@@ -89,6 +89,8 @@ ol.stages .fl{flex:none;background:var(--fc);color:#fff;font-weight:800;font-siz
 .evlist button{text-align:left;font:600 .74rem var(--body);padding:7px 9px;border-radius:9px;border:1px solid var(--line);background:var(--chip);color:var(--muted);cursor:pointer;display:flex;flex-direction:column;gap:1px}
 .evlist button b{font-size:.9rem;color:var(--fg)}
 .evlist button.star{border-color:#f2b705;background:rgba(255,201,60,.28)}
+.event .evall{width:100%}
+.event .evall[aria-pressed="true"]{background:#b45309;border-color:#b45309;color:#fff}
 .event .evon{width:100%;border-color:#f2b705}
 .evnote{display:block;color:#b45309;font-weight:700;margin-top:2px}
 .legend .evleg{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;padding-bottom:4px;margin-bottom:2px;border-bottom:1px solid var(--line)}
@@ -103,6 +105,12 @@ ol.stages .fl{flex:none;background:var(--fc);color:#fff;font-weight:800;font-siz
   .toggle{display:inline-block}
   .touchhelp{display:block}
   .panel.collapsed .opt{display:none}
+  /* event box: one swipeable row of places so the 3D view keeps most of the screen */
+  .event{padding:8px;gap:6px}
+  .evlist{display:flex;overflow-x:auto;gap:6px;scrollbar-width:none}
+  .evlist button{flex:none;min-width:118px}
+  .event .hint{display:none}
+  .event .evall{padding:9px 12px}
   /* while a route is shown the sheet only holds the route guide */
   .panel.routing #searchBox,.panel.routing #eventBox,.panel.routing .opt:not(#navBox),.panel.routing #navBox>summary,
   .panel.routing .navgrid,.panel.routing .navbtns,.panel.routing .navhint{display:none}
@@ -201,12 +209,12 @@ const colorOf=g=>{const gr=gradeOf(g);return gr?GRADE_C[gr-1]:SHOW[g.c]||g.c;};
 // temporary event view: the rooms in use are highlighted, every other room turns grey and a star marks the
 // main venue. It switches itself off once `end` has passed; empty `places` to turn it off sooner.
 const EVENT={title:'수업나눔 한마당',day:'10월 20일',end:'2026-10-21T00:00:00+09:00',places:[
-  {room:'3-1',name:'3학년 1반',note:'공개수업 · 수업나눔 장소',label:'공개수업·나눔',star:true},
-  {room:'4-2',name:'4학년 2반',note:'공개수업',label:'공개수업'},
-  {room:'5-2',name:'5학년 2반',note:'공개수업',label:'공개수업'},
-  {room:'컴퓨터실2',name:'6학년 5반',note:'공개수업',label:'6-5 공개수업',moved:'6-5'}]};
+  {room:'3-1',name:'3학년 1반',note:'공개수업 · 수업나눔 장소',label:'공개수업·나눔',tag:'3-1 수업나눔',star:true},
+  {room:'4-8',name:'4학년 8반',note:'공개수업',label:'공개수업',tag:'4-8'},
+  {room:'5-2',name:'5학년 2반',note:'공개수업',label:'공개수업',tag:'5-2'},
+  {room:'컴퓨터실2',name:'6학년 5반',note:'공개수업',label:'6-5 공개수업',tag:'6-5 · 컴퓨터실2',moved:'6-5'}]};
 const EV_C='#ffc93c', EV_GRAY='#dcdfde', EV_KEEP=new Set(['화장실','계단','현관·로비','승강기']);
-let evShow=true;
+let evShow=true, evAll=false; // evAll: all event places at once, other rooms see-through
 const evLive=()=>EVENT.places.length>0&&Date.now()<Date.parse(EVENT.end);
 const evOn=()=>evLive()&&evShow;
 // buildings, using the same split as the exterior model (zoneOf)
@@ -531,7 +539,7 @@ document.fonts.ready.then(()=>{
     m.rotation.x=-Math.PI/2; m.position.set(BX0+BW/2-CX,ROOM+0.15,BZ0+BD/2-CZ); m.renderOrder=2; grp.add(m); grp.userData.labels=m;
     labelCv[f]={ctx,tex};
   });
-  drawLabels();
+  drawLabels();buildEvTags();
 });
 // floor tags floating at west end
 floors.forEach((grp,f)=>{const t=textPlane(`${f+1}F`,60-CX,0,ROOM,40,24,'#0f7a5c',20);grp.add(t);});
@@ -564,15 +572,18 @@ function layout(){
   const op=sp?Math.min(extOp,0.95):extOp;
   extMats.forEach(m=>{m.opacity=op;m.depthWrite=op>=0.95;});
   ext.traverse(o=>{if(o.isMesh)o.castShadow=op>=0.95;});
-  rooms.forEach(r=>{const dim=dimF(r.floor);r.mat.opacity=dim?0.15:1;r.mat.depthWrite=!dim;});
-  floors.forEach((g,f)=>{if(g.userData.labels)g.userData.labels.visible=!dimF(f);});
+  const evA=evAll&&evOn();
+  rooms.forEach(r=>{const dim=evA?!r.ev:dimF(r.floor);r.mat.opacity=dim?(evA?0.1:0.15):1;r.mat.depthWrite=!dim;});
+  floors.forEach((g,f)=>{if(g.userData.labels)g.userData.labels.visible=!evA&&!dimF(f);});
+  evTags.forEach(t=>t.visible=evA&&shownBld.has(t.userData.room.bld));
+  if(evStar.userData.sign)evStar.userData.sign.visible=!evA;
   document.getElementById('gap').disabled=stacked();
   if(route)drawRoute();
 }
 const fb=document.getElementById('floors');
 [['전체',-1],...[1,2,3,4,5].map(n=>[n+'F',n-1])].forEach(([t,v])=>{const b=document.createElement('button');b.textContent=t;b.dataset.v=v;
   b.onclick=()=>setFloor(v);fb.appendChild(b);});
-function markFloor(){[...fb.children].forEach(b=>b.setAttribute('aria-pressed',String(+b.dataset.v===active)));}
+function markFloor(){evAll=false;syncEvAll();[...fb.children].forEach(b=>b.setAttribute('aria-pressed',String(+b.dataset.v===active)));}
 function setFloor(v,quiet){if(mode!=='plan')setMode('plan',true);active=v;markFloor();layout();
   if(!quiet)flyTo(new THREE.Vector3(0,fy(v<0?2:v),v<0?40:0),v<0?1000:620);}
 const modeBtns=[...document.querySelectorAll('#mode button')];
@@ -985,7 +996,7 @@ const evStar=new THREE.Group();
   const star=new THREE.Mesh(geo,new THREE.MeshLambertMaterial({color:0xffc400,emissive:0x7a4a00,depthTest:false,transparent:true}));star.renderOrder=14;
   const sign=makeSprite('★ 수업나눔','#d97706');sign.position.y=12;
   const [x,z,w,d]=r.g.b.reduce((a,c)=>a[2]*a[3]>=c[2]*c[3]?a:c);
-  evStar.add(star,sign);evStar.scale.setScalar(1.6);evStar.position.set(x+w/2-CX,ROOM+14,z+d/2-CZ);evStar.userData={spin:star,room:r};floors[r.floor].add(evStar);})();
+  evStar.add(star,sign);evStar.scale.setScalar(1.6);evStar.position.set(x+w/2-CX,ROOM+14,z+d/2-CZ);evStar.userData={spin:star,sign,room:r};floors[r.floor].add(evStar);})();
 function syncStar(){const r=evStar.userData.room;evStar.visible=!!r&&evOn()&&shownBld.has(r.bld);}
 const evBox=document.getElementById('eventBox');
 function renderEventBox(){
@@ -993,40 +1004,84 @@ function renderEventBox(){
   if(!evShow){evBox.innerHTML=`<button class="btn evon" id="evOn">★ ${EVENT.day} ${EVENT.title} 장소 보기</button>`;
     evBox.querySelector('#evOn').onclick=()=>{evShow=true;applyEvent();setMode('plan');};return;}
   evBox.innerHTML=`<div class="evhead"><b>★ ${EVENT.day} ${EVENT.title}</b><button class="btn" id="evOff">평소 배치도</button></div>
+    <button class="btn primary evall" id="evAll">공개수업 장소 ${evRooms.length}곳 모두 보기</button>
     <div class="evlist">${evRooms.map((r,i)=>`<button data-i="${i}"${r.ev.star?' class="star"':''}><b>${r.ev.star?'★ ':''}${r.ev.name}</b><span>${BLD[r.bld]} ${r.floor+1}층${r.ev.moved?' '+r.label:''}</span></button>`).join('')}</div>
     <div class="hint">누르면 위치와 길 안내가 나와요${evRooms.some(r=>r.ev.star)?` · ★ 수업나눔: ${evRooms.find(r=>r.ev.star).ev.name}`:''}</div>`;
-  evBox.querySelector('#evOff').onclick=()=>{evShow=false;applyEvent();};
+  evBox.querySelector('#evOff').onclick=()=>{evShow=false;evAll=false;applyEvent();layout();};
+  evBox.querySelector('#evAll').onclick=()=>evAll?setFloor(-1):showAllEv();syncEvAll();
   evBox.querySelectorAll('[data-i]').forEach(b=>b.onclick=()=>showRoom(evRooms[+b.dataset.i]));}
 // event on: rooms in use are highlighted, other rooms grey; toilets, stairs, lifts and the entrance keep their colour
 function applyEvent(){const on=evOn();
   rooms.forEach(r=>r.mat.color.set(!on?r.color:r.ev?EV_C:r.solid&&!EV_KEEP.has(r.cat)?EV_GRAY:r.color));
   legend.querySelector('.evleg').hidden=!on;legend.querySelector('.grades').hidden=on;
   syncStar();drawLabels();renderEventBox();if(selected)select(selected);}
+// name tags over every event place, shown in the "모두 보기" view where the other rooms turn see-through
+const evTags=[];
+function buildEvTags(){evRooms.forEach(r=>{
+  const c=document.createElement('canvas'),g=c.getContext('2d'),font='800 44px "Gothic A1",sans-serif';g.font=font;
+  const txt=(r.ev.star?'★ ':'')+(r.ev.tag||r.g.l),w=Math.ceil(g.measureText(txt).width)+48;c.width=w;c.height=84;
+  g.font=font;g.fillStyle='#b45309';g.beginPath();g.roundRect?g.roundRect(4,4,w-8,76,22):g.rect(4,4,w-8,76);g.fill();
+  g.fillStyle='#fff';g.textAlign='center';g.textBaseline='middle';g.fillText(txt,w/2,46);
+  const s=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),depthTest:false,transparent:true,sizeAttenuation:false}));
+  s.scale.set(w/84*0.034,0.034,1);s.renderOrder=15;s.userData.room=r;s.visible=false;
+  const [x,z,cw,cd]=r.g.b.reduce((a,b)=>a[2]*a[3]>=b[2]*b[3]?a:b);s.position.set(x+cw/2-CX,ROOM+9,z+cd/2-CZ);
+  floors[r.floor].add(s);evTags.push(s);});layout();}
+// tags keep a fixed screen size, so ones that land on top of each other are lifted until they clear
+function spreadTags(){const t=Math.tan(THREE.MathUtils.degToRad(camera.fov)/2),placed=[];
+  evTags.filter(s=>s.visible).map(s=>{const p=s.getWorldPosition(new THREE.Vector3()).project(camera);
+    return{s,x:p.x,y:p.y,w:s.scale.x/t/camera.aspect,h:s.scale.y/t};}).sort((a,b)=>a.y-b.y).forEach(it=>{
+    let y=it.y;for(let k=0;k<6;k++){const hit=placed.find(o=>Math.abs(o.x-it.x)<(o.w+it.w)/2&&Math.abs(o.y-y)<(o.h+it.h)/2);
+      if(!hit)break;y=hit.y+(hit.h+it.h)/2+0.01;}
+    it.s.center.y=0.5-(y-it.y)/it.h;placed.push({...it,y});});}
+function syncEvAll(){const b=document.getElementById('evAll');if(!b)return;b.setAttribute('aria-pressed',String(evAll));
+  b.textContent=evAll?'모두 보기 끝내기':`공개수업 장소 ${evRooms.length}곳 모두 보기`;}
+// every event place at once: all floors, other rooms see-through, camera framed on the places
+function showAllEv(){if(!evOn()||!evRooms.length)return;
+  evRooms.forEach(r=>shownBld.add(r.bld));applyBld();
+  if(mode!=='plan')setMode('plan',true);select(null);active=-1;markFloor();evAll=true;syncEvAll();layout();
+  scene.updateMatrixWorld();const box=new THREE.Box3();evRooms.forEach(r=>r.meshes.forEach(m=>box.expandByObject(m)));
+  box.max.y+=20; // room for the name tags
+  // tall visible area (phone): look along the school's long side so it runs up the screen
+  const f=visFrac(),tall=f.x*innerWidth<f.y*innerHeight*1.2;
+  fitBox(box,tall?new THREE.Vector3(0.62,0.5,0.1):new THREE.Vector3(-0.2,0.9,0.6));}
 // iOS keeps the layout viewport under the on-screen keyboard: lift the bottom sheet above it
 if(window.visualViewport){const vv=visualViewport,kb=()=>{document.documentElement.style.setProperty('--kb',
   Math.max(0,document.documentElement.clientHeight-vv.height-vv.offsetTop)+'px');watchCover();};
   vv.addEventListener('resize',kb);vv.addEventListener('scroll',kb);}
 
-// on phones the sheet covers the bottom and the room card the top: shift the picture so the camera
-// target sits in the middle of the part of the screen that is still visible
-const view={cur:0,to:0};
-function coverShift(){if(!phone.matches)return 0;
-  const top=card.hidden?0:card.getBoundingClientRect().bottom,bot=panel.hidden?0:innerHeight-panel.getBoundingClientRect().top;
-  return Math.round((Math.max(0,bot)-top)/2);}
-function applyView(){const w=innerWidth,h=innerHeight;if(Math.abs(view.cur)<0.5)camera.clearViewOffset();else camera.setViewOffset(w,h,0,view.cur,w,h);}
-const watchCover=()=>{view.to=coverShift();};
+// the menu covers part of the screen (bottom sheet + room card on phones, the left column on wider
+// screens): shift the picture so the camera target sits in the middle of the part still visible
+const view={x:0,y:0,tx:0,ty:0};
+function covers(){const c={top:0,bot:0,left:0,right:0};if(phone.matches)c.right=innerWidth-document.querySelector('.zoom').getBoundingClientRect().left;
+  if(panel.hidden)return c;
+  if(phone.matches){c.top=card.hidden?0:card.getBoundingClientRect().bottom;c.bot=Math.max(0,innerHeight-panel.getBoundingClientRect().top);}
+  else c.left=panel.getBoundingClientRect().right;
+  return c;}
+function applyView(){const w=innerWidth,h=innerHeight;
+  if(Math.abs(view.x)<0.5&&Math.abs(view.y)<0.5)camera.clearViewOffset();else camera.setViewOffset(w,h,view.x,view.y,w,h);}
+const watchCover=()=>{const c=covers();view.tx=-Math.round(c.left/2);view.ty=Math.round((c.bot-c.top)/2);};
+// camera distance that fits a box inside the visible part of the screen (corners projected, a few rounds)
+const visFrac=()=>{const c=covers();return{x:(innerWidth-c.left-2*c.right)/innerWidth,y:(innerHeight-c.top-c.bot)/innerHeight};};
+function fitBox(box,dir){const f=visFrac(),ctr=box.getCenter(new THREE.Vector3()),dn=dir.clone().normalize(),cam=camera.clone();cam.clearViewOffset();
+  const pts=[];for(const x of[box.min.x,box.max.x])for(const y of[box.min.y,box.max.y])for(const z of[box.min.z,box.max.z])pts.push(new THREE.Vector3(x,y,z));
+  let d=800;for(let i=0;i<4;i++){cam.position.copy(ctr).addScaledVector(dn,d);cam.lookAt(ctr);cam.updateMatrixWorld();
+    let m=0;pts.forEach(p=>{const q=p.clone().project(cam);m=Math.max(m,Math.abs(q.x)/f.x,Math.abs(q.y)/f.y);});d*=m/0.92;}
+  d=THREE.MathUtils.clamp(d,controls.minDistance,controls.maxDistance);
+  flyCam(ctr,ctr.clone().addScaledVector(dn,d));}
 new ResizeObserver(watchCover).observe(panel);new ResizeObserver(watchCover).observe(card);
 
-function resize(){const w=innerWidth,h=innerHeight;renderer.setSize(w,h);camera.aspect=w/h;camera.updateProjectionMatrix();watchCover();view.cur=view.to;applyView();}
+function resize(){const w=innerWidth,h=innerHeight;renderer.setSize(w,h);camera.aspect=w/h;camera.updateProjectionMatrix();watchCover();view.x=view.tx;view.y=view.ty;applyView();}
 addEventListener('resize',resize);resize();
 camera.position.set(30,230,420);controls.target.set(-50,45,-10);setMode('ext',true);
-applyBld();applyEvent();if(evOn())setMode('plan');
+applyBld();applyEvent();if(evOn())showAllEv();
 const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
 renderer.setAnimationLoop(t=>{
   if(fly){fly.t=reduce?1:Math.min(1,fly.t+0.06);const k=1-Math.pow(1-fly.t,3);controls.target.lerpVectors(fly.a,fly.b,k);camera.position.lerpVectors(fly.pa,fly.pb,k);if(fly.t>=1)fly=null;}
   if(selected){const s=(Math.sin(t/250)+1)/2;selected.mat.emissive.setRGB(0.35*s,0.25*s,0);}
   if(evStar.visible&&!reduce){evStar.userData.spin.rotation.y=t/700;evStar.position.y=ROOM+14+Math.sin(t/450)*1.5;}
-  if(view.cur!==view.to){view.cur=reduce||Math.abs(view.to-view.cur)<1?view.to:view.cur+(view.to-view.cur)*0.2;applyView();}
+  if(view.x!==view.tx||view.y!==view.ty){const k=v=>reduce||Math.abs(view['t'+v]-view[v])<1?view['t'+v]:view[v]+(view['t'+v]-view[v])*0.2;
+    view.x=k('x');view.y=k('y');applyView();}
+  if(evAll)spreadTags();
   animateDots(t);stepFollow(t);
   controls.update();renderer.render(scene,camera);});
 </script>
