@@ -61,6 +61,7 @@ details.nav summary::after{content:'+';color:var(--muted)}details.nav[open] summ
 #navOut{margin-top:8px;font-size:.8rem}
 #navOut ol{margin:6px 0 0;padding-left:1.2em;display:flex;flex-direction:column;gap:3px}
 .navhead{font-weight:800;border-left:4px solid var(--c);padding-left:8px;display:flex;flex-direction:column}
+ol.stages .via{display:block;color:var(--muted);font-size:.74rem;font-weight:600}
 .navhead em{font-style:normal;font-weight:600;color:var(--muted);font-size:.74rem}.navhead span{font-weight:600;color:var(--muted);font-size:.75rem}
 .cardbtns{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
 .cardbtns button{font:700 .78rem var(--body);padding:6px 9px;border-radius:8px;border:1px solid var(--line);background:var(--chip);color:var(--fg);cursor:pointer}
@@ -539,10 +540,8 @@ document.fonts.ready.then(()=>{
     m.rotation.x=-Math.PI/2; m.position.set(BX0+BW/2-CX,ROOM+0.15,BZ0+BD/2-CZ); m.renderOrder=2; grp.add(m); grp.userData.labels=m;
     labelCv[f]={ctx,tex};
   });
-  drawLabels();buildEvTags();
+  drawLabels();buildEvTags();buildFloorBadges();
 });
-// floor tags floating at west end
-floors.forEach((grp,f)=>{const t=textPlane(`${f+1}F`,60-CX,0,ROOM,40,24,'#0f7a5c',20);grp.add(t);});
 
 // ===== view state =====
 let active=-1, selected=null, mode='ext', overlay=false, extOp=1;
@@ -558,7 +557,8 @@ function layout(){
   const rf=route?routeFloors():null;
   // in 단계별/따라가기, floors above the floor being walked are hidden so the path is never drawn over a higher floor
   const st=route&&route.view!=='all'&&route.cur>=0?route.stages[route.cur]:null;
-  const top=st?(st.kind==='out'?0:st.f):9;
+  // ...but a stage that climbs keeps every floor up to where the stair arrives
+  const top=st?(st.kind==='out'?0:Math.max(st.f,st.vert?st.vert.f1:st.f)):9;
   const on=f=>rf?rf.has(f)&&f<=top:(active<0||f<=active);
   floors.forEach((g,f)=>{g.position.y=f*H*k;g.visible=sp&&on(f);});
   stairs.forEach(s=>s.scale.y=k);
@@ -569,19 +569,23 @@ function layout(){
     else route.stages.forEach(st=>{if(st.kind==='walk')lit.add(st.f);});
     if(route.view!=='all'&&route.stages[route.cur]&&route.stages[route.cur].kind==='out')lit.add(0);}
   const dimF=f=>lit?!lit.has(f):(active>=0&&f<active);
+  // floors the stairs pass through (and the floor they arrive at): very see-through, names still faintly shown
+  const pass=new Set();if(route)(st?[st]:route.stages).forEach(s=>{if(!s.vert)return;
+    for(let f=Math.min(s.vert.f0,s.vert.f1);f<=Math.max(s.vert.f0,s.vert.f1);f++)if(!lit.has(f))pass.add(f);});
   const op=sp?Math.min(extOp,0.95):extOp;
   extMats.forEach(m=>{m.opacity=op;m.depthWrite=op>=0.95;});
   ext.traverse(o=>{if(o.isMesh)o.castShadow=op>=0.95;});
   const evA=evAll&&evOn();
-  rooms.forEach(r=>{const dim=evA?!r.ev:dimF(r.floor);r.mat.opacity=dim?(evA?0.1:0.15):1;r.mat.depthWrite=!dim;});
-  floors.forEach((g,f)=>{if(g.userData.labels)g.userData.labels.visible=!evA&&!dimF(f);});
+  rooms.forEach(r=>{const dim=evA?!r.ev:dimF(r.floor);r.mat.opacity=dim?(evA||pass.has(r.floor)?0.1:0.15):1;r.mat.depthWrite=!dim;});
+  floors.forEach((g,f)=>{const L=g.userData.labels;if(!L)return;L.visible=!evA&&(!dimF(f)||pass.has(f));L.material.opacity=pass.has(f)?0.4:1;});
+  floorBadges.forEach(s=>{s.material.opacity=s.parent&&floors.includes(s.parent)&&dimF(s.userData.floor)&&!pass.has(s.userData.floor)?0.4:1;});
   evTags.forEach(t=>t.visible=evA&&shownBld.has(t.userData.room.bld));
   if(evStar.userData.sign)evStar.userData.sign.visible=!evA;
   document.getElementById('gap').disabled=stacked();
   if(route)drawRoute();
 }
 const fb=document.getElementById('floors');
-[['전체',-1],...[1,2,3,4,5].map(n=>[n+'F',n-1])].forEach(([t,v])=>{const b=document.createElement('button');b.textContent=t;b.dataset.v=v;
+[['전체',-1],...[1,2,3,4,5].map(n=>[n+'층',n-1])].forEach(([t,v])=>{const b=document.createElement('button');b.textContent=t;b.dataset.v=v;
   b.onclick=()=>setFloor(v);fb.appendChild(b);});
 function markFloor(){evAll=false;syncEvAll();[...fb.children].forEach(b=>b.setAttribute('aria-pressed',String(+b.dataset.v===active)));}
 function setFloor(v,quiet){if(mode!=='plan')setMode('plan',true);active=v;markFloor();layout();
@@ -720,9 +724,12 @@ function stageText(st,i,r){
   const last=r.steps[r.steps.length-1].n,first=r.steps[0].n;
   if(st.kind==='out')return{t:'건물 밖으로 이동',d:`<b>${st.a.exit}</b>로 나가 <b>${st.b.exit}</b>로 들어가기`};
   const parts=[];
-  if(i===0)parts.push(`<b>${first.f+1}F ${where(first)}</b>에서 출발`);
-  else parts.push(`<b>${st.f+1}F</b> 복도를 따라 이동`);
-  if(st.vert){const v=st.vert,up=v.f1>v.f0;parts.push(`<b>${v.name}</b>로 <b>${v.f1+1}F</b>까지 ${up?'올라가기 ↑':'내려가기 ↓'}`);}
+  if(i===0)parts.push(`<b>${first.f+1}층 ${where(first)}</b>에서 출발`);
+  else parts.push(`<b>${st.f+1}층</b> 복도를 따라 이동`);
+  if(st.vert){const v=st.vert,up=v.f1>v.f0,n=Math.abs(v.f1-v.f0),mid=[];
+    for(let f=v.f0+(up?1:-1);f!==v.f1;f+=up?1:-1)mid.push(f+1);
+    parts.push(`<b>${v.name}</b>로 <b>${v.f1+1}층</b>까지 ${up?'올라가기 ↑':'내려가기 ↓'}`+
+      (mid.length?` <span class="via">${mid.join('·')}층을 지나 ${n}개 층</span>`:''));}
   if(st.end)parts.push(r.evac?`<b>${last.exit}</b>로 건물 밖 대피`:`<b>${where(last)}</b> 도착`);
   return{t:`${st.f+1}층`,d:parts.join(' → ')};}
 function drawRoute(){
@@ -746,7 +753,14 @@ function drawRoute(){
   // floor-change signs
   route.stages.forEach((st,i)=>{if(!st.vert)return;const v=st.vert,up=v.f1>v.f0;
     const s=makeSprite(`${up?'↑':'↓'} ${v.f1+1}층으로`,FLOORCOL[v.f1]);s.position.set(v.x-CX,v.f0*H*k+20,v.z-CZ);
-    if(focus>=0&&i!==focus)s.material.opacity=0.3;routeG.add(s);});
+    if(focus>=0&&i!==focus)s.material.opacity=0.3;routeG.add(s);
+    // a ring and a label on the stair line at every floor: passed floors in grey, the arrival floor in its colour
+    for(let f=v.f0+(up?1:-1);;f+=up?1:-1){const end=f===v.f1,col=end?FLOORCOL[f]:'#6b7774',y=f*H*k+(stacked()?2:3);
+      const tag=pillSprite(end?`${f+1}층 도착`:`${f+1}층 지나감`,col,end?0.036:0.03);tag.center.set(-0.12,0.5);
+      tag.position.set(v.x-CX,y,v.z-CZ);if(focus>=0&&i!==focus)tag.material.opacity=0.3;routeG.add(tag);
+      const ring=new THREE.Mesh(new THREE.TorusGeometry(2.4,0.55,6,20),mat(col,focus>=0&&i!==focus));
+      ring.rotation.x=Math.PI/2;ring.position.set(v.x-CX,y,v.z-CZ);ring.renderOrder=11;routeG.add(ring);
+      if(end)break;}});
   const pin=(p,color,txt)=>{const m=new THREE.Mesh(new THREE.ConeGeometry(3.2,8,14),new THREE.MeshBasicMaterial({color,depthTest:false,transparent:true}));
     m.rotation.x=Math.PI;m.position.copy(p).add(new THREE.Vector3(0,6,0));m.renderOrder=11;routeG.add(m);
     const s=makeSprite(txt,color);s.position.copy(p).add(new THREE.Vector3(0,16,0));routeG.add(s);};
@@ -755,6 +769,26 @@ function drawRoute(){
     for(let i=0;i<Math.min(40,Math.ceil(tot/14));i++){const d=new THREE.Mesh(new THREE.SphereGeometry(0.9,8,6),dm);d.renderOrder=12;routeG.add(d);dots.push(d);}}
   routeG.add(walker);walker.visible=route.view==='follow';
 }
+// pill label that keeps the same size on screen at any zoom
+function pillSprite(txt,bg,size=0.04){const c=document.createElement('canvas'),g=c.getContext('2d'),font='800 44px "Gothic A1",sans-serif';g.font=font;
+  const w=Math.ceil(g.measureText(txt).width)+44;c.width=w;c.height=80;g.font=font;
+  g.fillStyle=bg;g.beginPath();g.roundRect?g.roundRect(3,3,w-6,74,37):g.rect(3,3,w-6,74);g.fill();
+  g.fillStyle='#fff';g.textAlign='center';g.textBaseline='middle';g.fillText(txt,w/2,43);
+  const s=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),depthTest:false,transparent:true,sizeAttenuation:false}));
+  // drawn even when its anchor is off screen: clampBadges may slide it back into view
+  s.scale.set(w/80*size,size,1);s.renderOrder=16;s.frustumCulled=false;return s;}
+// floor badges along the west end of the school, in each floor's route colour; tap one to see that floor
+const floorBadges=[];
+// keep the badges inside the visible part of the screen: one that falls under the menu slides out beside it
+const _bv=new THREE.Vector3();
+function clampBadges(){const c=covers(),W=innerWidth,t=Math.tan(THREE.MathUtils.degToRad(camera.fov)/2);
+  floorBadges.forEach(s=>{let o=s;while(o){if(!o.visible)return;o=o.parent;}
+    const p=s.getWorldPosition(_bv).project(camera),pw=s.scale.x/t/camera.aspect*W/2,left=(p.x+1)/2*W-pw/2,min=c.left+8;
+    s.center.x=left<min?0.5-(min-left)/pw:0.5;});}
+function buildFloorBadges(){const bx=Math.min(...DATA.flatMap(g=>g.b.map(b=>b[0])))-26-CX,bz=40-CZ;
+  floors.forEach((grp,f)=>{const s=pillSprite(`${f+1}층`,FLOORCOL[f]);s.position.set(bx,ROOM/2,bz);s.userData.floor=f;grp.add(s);floorBadges.push(s);});
+  extF.forEach((grp,f)=>{const s=pillSprite(`${f+1}층`,FLOORCOL[f]);s.position.set(bx,f*EH+EH/2,bz);s.userData.floor=f;grp.add(s);floorBadges.push(s);});
+  layout();}
 function makeSprite(txt,color){const c=document.createElement('canvas');c.width=320;c.height=96;const g=c.getContext('2d');
   g.fillStyle=color;g.beginPath();g.roundRect?g.roundRect(8,8,304,80,24):g.rect(8,8,304,80);g.fill();
   g.fillStyle='#fff';g.font='800 48px "Gothic A1",sans-serif';g.textAlign='center';g.textBaseline='middle';g.fillText(txt,160,50);
@@ -795,8 +829,12 @@ function markStage(){navOut.querySelectorAll('li').forEach((li,i)=>li.classList.
 function frame(stageIdx){
   const box=new THREE.Box3();
   (route.P||[]).forEach((p,i)=>{if(stageIdx<0||route.pts[i].s===stageIdx||(i+1<route.pts.length&&route.pts[i+1].s===stageIdx))box.expandByPoint(p);});
-  if(box.isEmpty())return;const c=box.getCenter(new THREE.Vector3()),sz=box.getSize(new THREE.Vector3()).length();
-  flyCam(c,c.clone().add(new THREE.Vector3(-0.25,0.85,0.75).normalize().multiplyScalar(Math.max(stageIdx<0?380:300,sz*(stageIdx<0?1.6:1.5)))));}
+  if(box.isEmpty())return;
+  box.expandByVector(new THREE.Vector3(14,22,14)); // pins, signs and floor tags around the line
+  // a short stage is framed as at least this wide, so the camera does not dive in too close
+  const sz=box.getSize(new THREE.Vector3()),need=stageIdx<0?170:130;
+  box.expandByVector(new THREE.Vector3(Math.max(0,(need-sz.x)/2),0,Math.max(0,(need-sz.z)/2)));
+  fitBox(box,new THREE.Vector3(-0.25,0.85,0.75));}
 function setView(v){route.view=v;follow.playing=false;panel.dataset.view=v;
   if(v==='step'&&route.cur<0)route.cur=0;if(v==='all')route.cur=-1;
   if(v==='follow'){follow.s=0;follow.dir=null;follow.snap=true;follow.playing=true;route.cur=0;}
@@ -808,7 +846,7 @@ function syncFollowUI(){const b=document.getElementById('playBtn');if(b)b.textCo
 function showRoute(steps,color,evac,title){
   const {pts,stages}=buildStages(steps);
   route={steps,color,evac,pts,stages,view:'all',cur:-1};select(null);panel.classList.add('routing');openNav();
-  if(mode==='ext'&&extOp>=0.95){overlay=true;ovIn.checked=true;setMode('plan',true);}
+  if(mode!=='plan'||overlay){overlay=false;ovIn.checked=false;setMode('plan',true);}
   active=-1;markFloor();
   const {m}=directions(steps,evac);
   const items=stages.map((st,i)=>{const x=stageText(st,i,route);const col=st.kind==='out'?'#5b6770':FLOORCOL[st.f];
@@ -915,7 +953,11 @@ renderer.domElement.addEventListener('pointermove',e=>{if(e.pointerType!=='mouse
   else{tip.hidden=true;renderer.domElement.style.cursor='';}});
 let down=null;
 renderer.domElement.addEventListener('pointerdown',e=>down=[e.clientX,e.clientY]);
-renderer.domElement.addEventListener('pointerup',e=>{if(!down||Math.hypot(e.clientX-down[0],e.clientY-down[1])>6)return;const r=pick(e);select(r&&r.g.l?r:null);});
+renderer.domElement.addEventListener('pointerup',e=>{if(!down||Math.hypot(e.clientX-down[0],e.clientY-down[1])>6)return;
+  const r=pick(e);
+  if(!route){const vis=m=>{let o=m;while(o){if(!o.visible)return false;o=o.parent;}return true;};
+    const b=ray.intersectObjects(floorBadges.filter(vis),false)[0];if(b){setFloor(b.object.userData.floor);return;}}
+  select(r&&r.g.l?r:null);});
 function select(r,fly_){if(selected)selected.mat.emissive.setHex(0);selected=r;
   if(!r){card.hidden=true;return;}
   card.hidden=false;
@@ -1018,12 +1060,7 @@ function applyEvent(){const on=evOn();
 // name tags over every event place, shown in the "모두 보기" view where the other rooms turn see-through
 const evTags=[];
 function buildEvTags(){evRooms.forEach(r=>{
-  const c=document.createElement('canvas'),g=c.getContext('2d'),font='800 44px "Gothic A1",sans-serif';g.font=font;
-  const txt=(r.ev.star?'★ ':'')+(r.ev.tag||r.g.l),w=Math.ceil(g.measureText(txt).width)+48;c.width=w;c.height=84;
-  g.font=font;g.fillStyle='#b45309';g.beginPath();g.roundRect?g.roundRect(4,4,w-8,76,22):g.rect(4,4,w-8,76);g.fill();
-  g.fillStyle='#fff';g.textAlign='center';g.textBaseline='middle';g.fillText(txt,w/2,46);
-  const s=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),depthTest:false,transparent:true,sizeAttenuation:false}));
-  s.scale.set(w/84*0.034,0.034,1);s.renderOrder=15;s.userData.room=r;s.visible=false;
+  const s=pillSprite((r.ev.star?'★ ':'')+(r.ev.tag||r.g.l),'#b45309',0.034);s.renderOrder=15;s.userData.room=r;s.visible=false;
   const [x,z,cw,cd]=r.g.b.reduce((a,b)=>a[2]*a[3]>=b[2]*b[3]?a:b);s.position.set(x+cw/2-CX,ROOM+9,z+cd/2-CZ);
   floors[r.floor].add(s);evTags.push(s);});layout();}
 // tags keep a fixed screen size, so ones that land on top of each other are lifted until they clear
@@ -1082,6 +1119,7 @@ renderer.setAnimationLoop(t=>{
   if(view.x!==view.tx||view.y!==view.ty){const k=v=>reduce||Math.abs(view['t'+v]-view[v])<1?view['t'+v]:view[v]+(view['t'+v]-view[v])*0.2;
     view.x=k('x');view.y=k('y');applyView();}
   if(evAll)spreadTags();
+  clampBadges();
   animateDots(t);stepFollow(t);
   controls.update();renderer.render(scene,camera);});
 </script>
